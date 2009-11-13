@@ -1,0 +1,24 @@
+--- #YAML:1.0
+name:               Perl-APIReference
+version:            0.01
+abstract:           Programmatically query the perlapi
+author:
+    - Steffen Mueller <smueller@cpan.org>
+license:            unknown
+distribution_type:  module
+configure_requires:
+    ExtUtils::MakeMaker:  0
+build_requires:
+    ExtUtils::MakeMaker:  0
+requires:
+    Class::XSAccessor:  1.03
+    Data::Dumper:       0
+    parent:             0
+no_index:
+    directory:
+        - t
+        - inc
+generated_by:       ExtUtils::MakeMaker version 6.54
+meta-spec:
+    url:      http://module-build.sourceforge.net/META-spec-v1.4.html
+    version:  1.4
