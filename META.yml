@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Perl-APIReference
-version:            0.01
+version:            0.03
 abstract:           Programmatically query the perlapi
 author:
     - Steffen Mueller <smueller@cpan.org>
@@ -11,7 +11,7 @@ configure_requires:
 build_requires:
     ExtUtils::MakeMaker:  0
 requires:
-    Class::XSAccessor:  1.03
+    Class::XSAccessor:  1.05
     Data::Dumper:       0
     parent:             0
 no_index:
