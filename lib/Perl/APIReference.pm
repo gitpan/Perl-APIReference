@@ -6,7 +6,7 @@ use warnings;
 use Carp qw/croak/;
 use version;
 
-our $VERSION = '0.05';
+our $VERSION = '0.06';
 
 use Class::XSAccessor
   getters => {
@@ -16,18 +16,16 @@ use Class::XSAccessor
 
 sub _par_loader_hint {
   require Perl::APIReference::Generator;
-  require Perl::APIReference::V5_012_003;
+  require Perl::APIReference::V5_014_000;
 }
 
 our %Perls = (
+  5.014    => 'V5_014_000',
   5.01301  => 'V5_013_010',
   5.012003 => 'V5_012_003',
   5.012002 => 'V5_012_002',
   5.012001 => 'V5_012_001',
   5.012000 => 'V5_012_000',
-  5.011002 => 'V5_011_002',
-  5.011001 => 'V5_011_001',
-  5.011    => 'V5_011_000',
   5.01     => 'V5_010_000',
   5.010001 => 'V5_010_001',
   5.008009 => 'V5_008_009',
@@ -45,12 +43,12 @@ our %Perls = (
   5.006    => 'V5_006_000',
 );
 
-our $NewestAPI       = '5.013010';
-our $NewestStableAPI = '5.012003';
+our $NewestAPI       = '5.014000';
+our $NewestStableAPI = '5.014000';
 
+$Perls{'5.014000'} = $Perls{5.014};
 $Perls{'5.013010'} = $Perls{5.01301};
 $Perls{'5.012000'} = $Perls{5.012};
-$Perls{'5.011000'} = $Perls{5.011};
 $Perls{'5.010000'} = $Perls{5.01};
 $Perls{'5.010'}    = $Perls{5.01};
 $Perls{'5.008000'} = $Perls{5.008};
@@ -166,13 +164,15 @@ Perl::APIReference - Programmatically query the perlapi
 This module allows accessing the perlapi documentation for multiple
 releases of perl as an index (a hash).
 
-Currently, the stable releases perl 5.12.0-3, 5.10.0-1, 5.8.0-9, and 5.6.0-2
+Currently, the stable releases perl 5.14.0,
+5.12.0-3, 5.10.0-1, 5.8.0-9, and 5.6.0-2
 are supported. To add support for another release, simply send me the
 release's F<perlapi.pod> via email or via an RT ticket and I'll add it
 in the next release.
 
-Additionally, the development releases 5.13.10, and 5.11.0-2 are included,
-but these may be dropped at any time. The general policy on this is to try
+Additionally, the development release 5.13.10 is included.
+API docs for development may be dropped from the distribution
+at any time. The general policy on this is to try
 and ship the APIs for the newest development release.
 
 =head1 METHODS
@@ -218,7 +218,7 @@ Steffen Mueller, E<lt>smueller@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2009-2011 by Steffen Mueller
+Copyright (C) 2009, 2010, 2011 by Steffen Mueller
 
 This library is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself, either Perl version 5.6.0 or,
