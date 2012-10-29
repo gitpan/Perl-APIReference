@@ -1,4 +1,4 @@
-package Perl::APIReference::V5_015_001;
+package Perl::APIReference::V5_016_000;
 use strict;
 use warnings;
 use parent 'Perl::APIReference';
@@ -21,7 +21,7 @@ the second, C<s2>.  Returns true or false.
 
 	bool	strGE(char* s1, char* s2)','name' => 'strGE'},'SvPV' => {'text' => 'Returns a pointer to the string in the SV, or a stringified form of
 the SV if the SV does not contain a string.  The SV may cache the
-stringified version becoming C<SvPOK>.  Handles \'get\' magic. See also
+stringified version becoming C<SvPOK>.  Handles \'get\' magic.  See also
 C<SvPVx> for a version which guarantees to evaluate sv only once.
 
 	char*	SvPV(SV* sv, STRLEN len)','name' => 'SvPV'},'sv_vsetpvf_mg' => {'text' => 'Like C<sv_vsetpvf>, but also handles \'set\' magic.
@@ -66,16 +66,16 @@ entered. (allows debuggers to eval in the scope of the breakpoint rather
 than in the scope of the debugger itself).
 
 	CV*	find_runcv(U32 *db_seqp)','name' => 'find_runcv'},'utf8n_to_uvuni' => {'text' => 'Bottom level UTF-8 decode routine.
-Returns the code point value of the first character in the string C<s>
-which is assumed to be in UTF-8 (or UTF-EBCDIC) encoding and no longer than
-C<curlen> bytes; C<retlen> will be set to the length, in bytes, of that
-character.
+Returns the code point value of the first character in the string C<s>,
+which is assumed to be in UTF-8 (or UTF-EBCDIC) encoding, and no longer than
+C<curlen> bytes; C<*retlen> (if C<retlen> isn\'t NULL) will be set to
+the length, in bytes, of that character.
 
 The value of C<flags> determines the behavior when C<s> does not point to a
 well-formed UTF-8 character.  If C<flags> is 0, when a malformation is found,
-C<retlen> is set to the expected length of the UTF-8 character in bytes, zero
-is returned, and if UTF-8 warnings haven\'t been lexically disabled, a warning
-is raised.
+zero is returned and C<*retlen> is set so that (S<C<s> + C<*retlen>>) is the
+next possible position in C<s> that could begin a non-malformed character.
+Also, if UTF-8 warnings haven\'t been lexically disabled, a warning is raised.
 
 Various ALLOW flags can be set in C<flags> to allow (and not warn on)
 individual types of malformations, such as the sequence being overlong (that
@@ -83,8 +83,10 @@ is, when there is a shorter sequence that can express the same code point;
 overlong sequences are expressly forbidden in the UTF-8 standard due to
 potential security issues).  Another malformation example is the first byte of
 a character not being a legal first byte.  See F<utf8.h> for the list of such
-flags.  Of course, the value returned by this function under such conditions is
-not reliable.
+flags.  For allowed 0 length strings, this function returns 0; for allowed
+overlong sequences, the computed code point is returned; for all other allowed
+malformations, the Unicode REPLACEMENT CHARACTER is returned, as these have no
+determinable reasonable value.
 
 The UTF8_CHECK_ONLY flag overrides the behavior when a non-allowed (by other
 flags) malformation is found.  If this flag is set, the routine assumes that
@@ -92,9 +94,9 @@ the caller will raise a warning, and this function will silently just set
 C<retlen> to C<-1> and return zero.
 
 Certain code points are considered problematic.  These are Unicode surrogates,
-Unicode non-characters, and code points above the Unicode maximum of 0x10FFF.
+Unicode non-characters, and code points above the Unicode maximum of 0x10FFFF.
 By default these are considered regular code points, but certain situations
-warrant special handling for them.  if C<flags> contains
+warrant special handling for them.  If C<flags> contains
 UTF8_DISALLOW_ILLEGAL_INTERCHANGE, all three classes are treated as
 malformations and handled as such.  The flags UTF8_DISALLOW_SURROGATE,
 UTF8_DISALLOW_NONCHAR, and UTF8_DISALLOW_SUPER (meaning above the legal Unicode
@@ -110,20 +112,24 @@ UTF8_CHECK_ONLY is also specified.)
 
 Very large code points (above 0x7FFF_FFFF) are considered more problematic than
 the others that are above the Unicode legal maximum.  There are several
-reasons, one of which is that the original UTF-8 specification never went above
-this number (the current 0x10FFF limit was imposed later).  The UTF-8 encoding
-on ASCII platforms for these large code point begins with a byte containing
-0xFE or 0xFF.  The UTF8_DISALLOW_FE_FF flag will cause them to be treated as
-malformations, while allowing smaller above-Unicode code points.  (Of course
-UTF8_DISALLOW_SUPER will treat all above-Unicode code points, including these,
-as malformations.) Similarly, UTF8_WARN_FE_FF acts just like the other WARN
-flags, but applies just to these code points.
+reasons: they requre at least 32 bits to represent them on ASCII platforms, are
+not representable at all on EBCDIC platforms, and the original UTF-8
+specification never went above this number (the current 0x10FFFF limit was
+imposed later).  (The smaller ones, those that fit into 32 bits, are
+representable by a UV on ASCII platforms, but not by an IV, which means that
+the number of operations that can be performed on them is quite restricted.)
+The UTF-8 encoding on ASCII platforms for these large code points begins with a
+byte containing 0xFE or 0xFF.  The UTF8_DISALLOW_FE_FF flag will cause them to
+be treated as malformations, while allowing smaller above-Unicode code points.
+(Of course UTF8_DISALLOW_SUPER will treat all above-Unicode code points,
+including these, as malformations.) Similarly, UTF8_WARN_FE_FF acts just like
+the other WARN flags, but applies just to these code points.
 
 All other code points corresponding to Unicode characters, including private
 use and those yet to be assigned, are never considered malformed and never
 warn.
 
-Most code should use utf8_to_uvchr() rather than call this directly.
+Most code should use L</utf8_to_uvchr_buf>() rather than call this directly.
 
 	UV	utf8n_to_uvuni(const U8 *s, STRLEN curlen,
 		               STRLEN *retlen, U32 flags)','name' => 'utf8n_to_uvuni'},'newSVpvn_utf8' => {'text' => 'Creates a new SV and copies a string into it.  If utf8 is true, calls
@@ -133,7 +139,11 @@ C<SvUTF8_on> on the new SV.  Implemented as a wrapper around C<newSVpvn_flags>.
 		              U32 utf8)','name' => 'newSVpvn_utf8'},'dMARK' => {'text' => 'Declare a stack marker variable, C<mark>, for the XSUB.  See C<MARK> and
 C<dORIGMARK>.
 
-		dMARK;','name' => 'dMARK'},'pregcomp' => {'text' => '','name' => 'pregcomp'},'my_cxt_index' => {'text' => '','name' => 'my_cxt_index'},'lex_discard_to' => {'text' => 'Discards the first part of the L</PL_parser-E<gt>linestr> buffer,
+		dMARK;','name' => 'dMARK'},'whichsig_pv' => {'text' => '','name' => 'whichsig_pv'},'gv_fetchmeth_sv_autoload' => {'text' => 'Exactly like L</gv_fetchmeth_pvn_autoload>, but takes the name string in the form
+of an SV instead of a string/length pair.
+
+	GV*	gv_fetchmeth_sv_autoload(HV* stash, SV* namesv,
+		                         I32 level, U32 flags)','name' => 'gv_fetchmeth_sv_autoload'},'pregcomp' => {'text' => '','name' => 'pregcomp'},'my_cxt_index' => {'text' => '','name' => 'my_cxt_index'},'lex_discard_to' => {'text' => 'Discards the first part of the L</PL_parser-E<gt>linestr> buffer,
 up to I<ptr>.  The remaining content of the buffer will be moved, and
 all pointers into the buffer updated appropriately.  I<ptr> must not
 be later in the buffer than the position of L</PL_parser-E<gt>bufptr>:
@@ -205,6 +215,9 @@ removed without notice.
 the package-scoped variables in the package where the subroutine was defined.
 For more information, see L<perlguts>.
 
+This also has a special use with XS AUTOLOAD subs.
+See L<perlguts/Autoloading with XSUBs>.
+
 	HV*	CvSTASH(CV* cv)','name' => 'CvSTASH'},'gv_const_sv' => {'text' => 'If C<gv> is a typeglob whose subroutine entry is a constant sub eligible for
 inlining, or C<gv> is a placeholder reference that would be promoted to such
 a typeglob, then returns the value returned by the sub.  Otherwise, returns
@@ -222,7 +235,7 @@ C<s>
 which is assumed to be in UTF-8 encoding; C<retlen> will be set to the
 length, in bytes, of that character.
 
-length and flags are the same as utf8n_to_uvuni().
+C<length> and C<flags> are the same as L</utf8n_to_uvuni>().
 
 	UV	utf8n_to_uvchr(const U8 *s, STRLEN curlen,
 		               STRLEN *retlen, U32 flags)','name' => 'utf8n_to_uvchr'},'G_ARRAY' => {'text' => 'Used to indicate list context.  See C<GIMME_V>, C<GIMME> and
@@ -266,19 +279,19 @@ ready to run at the exact same point as the previous one.
 The pseudo-fork code uses COPY_STACKS while the
 threads->create doesn\'t.
 
-CLONEf_KEEP_PTR_TABLE
+CLONEf_KEEP_PTR_TABLE -
 perl_clone keeps a ptr_table with the pointer of the old
 variable as a key and the new variable as a value,
 this allows it to check if something has been cloned and not
 clone it again but rather just use the value and increase the
-refcount. If KEEP_PTR_TABLE is not set then perl_clone will kill
+refcount.  If KEEP_PTR_TABLE is not set then perl_clone will kill
 the ptr_table using the function
 C<ptr_table_free(PL_ptr_table); PL_ptr_table = NULL;>,
 reason to keep it around is if you want to dup some of your own
 variable who are outside the graph perl scans, example of this
-code is in threads.xs create
+code is in threads.xs create.
 
-CLONEf_CLONE_HOST
+CLONEf_CLONE_HOST -
 This is a win32 thing, it is ignored on unix, it tells perls
 win32host code (which is c++) to clone itself, this is needed on
 win32 if you want to run two threads at the same time,
@@ -286,8 +299,10 @@ if you just want to do some stuff in a separate perl interpreter
 and then throw it away and return to the original one,
 you don\'t need to do anything.
 
-	PerlInterpreter* perl_clone(PerlInterpreter *proto_perl,
-	                            UV flags)','name' => 'perl_clone'},'save_alloc' => {'text' => '','name' => 'save_alloc'},'SvSetSV' => {'text' => 'Calls C<sv_setsv> if dsv is not the same as ssv.  May evaluate arguments
+	PerlInterpreter* perl_clone(
+	                     PerlInterpreter *proto_perl,
+	                     UV flags
+	                 )','name' => 'perl_clone'},'save_alloc' => {'text' => '','name' => 'save_alloc'},'SvSetSV' => {'text' => 'Calls C<sv_setsv> if dsv is not the same as ssv.  May evaluate arguments
 more than once.
 
 	void	SvSetSV(SV* dsb, SV* ssv)','name' => 'SvSetSV'},'rninstr' => {'text' => '','name' => 'rninstr'},'pad_findmy_pvn' => {'text' => 'Given the name of a lexical variable, find its position in the
@@ -329,7 +344,7 @@ will be converted into Unicode (and UTF-8).
 If the sv already is UTF-8 (or if it is not POK), or if the encoding
 is not a reference, nothing is done to the sv.  If the encoding is not
 an C<Encode::XS> Encoding object, bad things will happen.
-(See F<lib/encoding.pm> and L<Encode>).
+(See F<lib/encoding.pm> and L<Encode>.)
 
 The PV of the sv is returned.
 
@@ -346,17 +361,17 @@ The SV returned has a refcount of 1.
 
 	SV*	vstringify(SV *vs)','name' => 'vstringify'},'sv_catsv_flags' => {'text' => 'Concatenates the string from SV C<ssv> onto the end of the string in
 SV C<dsv>.  Modifies C<dsv> but not C<ssv>.  If C<flags> has C<SV_GMAGIC>
-bit set, will C<mg_get> on the SVs if appropriate, else not. C<sv_catsv>
+bit set, will C<mg_get> on the C<ssv>, if appropriate, before
+reading it.  If the C<flags> contain C<SV_SMAGIC>, C<mg_set> will be
+called on the modified SV afterward, if appropriate.  C<sv_catsv>
 and C<sv_catsv_nomg> are implemented in terms of this function.
 
 	void	sv_catsv_flags(SV *const dsv, SV *const ssv,
-		               const I32 flags)','name' => 'sv_catsv_flags'},'is_uni_alpha' => {'text' => '','name' => 'is_uni_alpha'},'str_to_version' => {'text' => '','name' => 'str_to_version'},'sv_derived_from' => {'text' => 'Returns a boolean indicating whether the SV is derived from the specified class
-I<at the C level>.  To check derivation at the Perl level, call C<isa()> as a
-normal Perl method.
+		               const I32 flags)','name' => 'sv_catsv_flags'},'is_uni_alpha' => {'text' => '','name' => 'is_uni_alpha'},'str_to_version' => {'text' => '','name' => 'str_to_version'},'sv_derived_from' => {'text' => 'Exactly like L</sv_derived_from_pv>, but doesn\'t take a C<flags> parameter.
 
 	bool	sv_derived_from(SV* sv, const char *const name)','name' => 'sv_derived_from'},'SvIOK_on' => {'text' => 'Tells an SV that it is an integer.
 
-	void	SvIOK_on(SV* sv)','name' => 'SvIOK_on'},'sv_cmp_locale' => {'text' => 'Compares the strings in two SVs in a locale-aware manner. Is UTF-8 and
+	void	SvIOK_on(SV* sv)','name' => 'SvIOK_on'},'sv_cmp_locale' => {'text' => 'Compares the strings in two SVs in a locale-aware manner.  Is UTF-8 and
 \'use bytes\' aware, handles get magic, and will coerce its args to strings
 if necessary.  See also C<sv_cmp>.
 
@@ -373,16 +388,22 @@ range bytes match only themselves.
 	I32	foldEQ(const char* a, const char* b, I32 len)','name' => 'foldEQ'},'PerlIO_get_base' => {'text' => '','name' => 'PerlIO_get_base'},'SvPVX' => {'text' => 'Returns a pointer to the physical string in the SV.  The SV must contain a
 string.
 
+This is also used to store the name of an autoloaded subroutine in an XS
+AUTOLOAD routine.  See L<perlguts/Autoloading with XSUBs>.
+
 	char*	SvPVX(SV* sv)','name' => 'SvPVX'},'XPUSHi' => {'text' => 'Push an integer onto the stack, extending the stack if necessary.  Handles
 \'set\' magic.  Uses C<TARG>, so C<dTARGET> or C<dXSTARG> should be called to
 declare it.  Do not call multiple C<TARG>-oriented macros to return lists
 from XSUB\'s - see C<mXPUSHi> instead.  See also C<PUSHi> and C<mPUSHi>.
 
-	void	XPUSHi(IV iv)','name' => 'XPUSHi'},'is_utf8_perl_word' => {'text' => '','name' => 'is_utf8_perl_word'},'debop' => {'text' => '','name' => 'debop'},'ref' => {'text' => '','name' => 'ref'},'is_uni_print_lc' => {'text' => '','name' => 'is_uni_print_lc'},'SvOOK_offset' => {'text' => 'Reads into I<len> the offset from SvPVX back to the true start of the
+	void	XPUSHi(IV iv)','name' => 'XPUSHi'},'is_utf8_perl_word' => {'text' => '','name' => 'is_utf8_perl_word'},'debop' => {'text' => '','name' => 'debop'},'ref' => {'text' => '','name' => 'ref'},'is_uni_print_lc' => {'text' => '','name' => 'is_uni_print_lc'},'sv_does_sv' => {'text' => 'Returns a boolean indicating whether the SV performs a specific, named role.
+The SV can be a Perl object or the name of a Perl class.
+
+	bool	sv_does_sv(SV* sv, SV* namesv, U32 flags)','name' => 'sv_does_sv'},'SvOOK_offset' => {'text' => 'Reads into I<len> the offset from SvPVX back to the true start of the
 allocated buffer, which will be non-zero if C<sv_chop> has been used to
-efficiently remove characters from start of the buffer. Implemented as a
+efficiently remove characters from start of the buffer.  Implemented as a
 macro, which takes the address of I<len>, which must be of type C<STRLEN>.
-Evaluates I<sv> more than once. Sets I<len> to 0 if C<SvOOK(sv)> is false.
+Evaluates I<sv> more than once.  Sets I<len> to 0 if C<SvOOK(sv)> is false.
 
 	void	SvOOK_offset(NN SV*sv, STRLEN len)','name' => 'SvOOK_offset'},'save_list' => {'text' => '','name' => 'save_list'},'is_uni_idfirst_lc' => {'text' => '','name' => 'is_uni_idfirst_lc'},'SvTAINTED_on' => {'text' => 'Marks an SV as tainted if tainting is enabled.
 
@@ -437,12 +458,15 @@ C<isWORDCHAR_A> and C<isWORDCHAR_L1>.
 	bool	isWORDCHAR(char ch)','name' => 'isWORDCHAR'},'Slab_Alloc' => {'text' => '','name' => 'Slab_Alloc'},'strLT' => {'text' => 'Test two strings to see if the first, C<s1>, is less than the second,
 C<s2>.  Returns true or false.
 
-	bool	strLT(char* s1, char* s2)','name' => 'strLT'},'save_pushptr' => {'text' => '','name' => 'save_pushptr'},'save_clearsv' => {'text' => '','name' => 'save_clearsv'},'Slab_Free' => {'text' => '','name' => 'Slab_Free'},'av_shift' => {'text' => 'Shifts an SV off the beginning of the array. Returns C<&PL_sv_undef> if the 
+	bool	strLT(char* s1, char* s2)','name' => 'strLT'},'save_pushptr' => {'text' => '','name' => 'save_pushptr'},'save_clearsv' => {'text' => '','name' => 'save_clearsv'},'Slab_Free' => {'text' => '','name' => 'Slab_Free'},'av_shift' => {'text' => 'Shifts an SV off the beginning of the
+array.  Returns C<&PL_sv_undef> if the 
 array is empty.
 
 Perl equivalent: C<shift(@myarray);>
 
-	SV*	av_shift(AV *av)','name' => 'av_shift'},'sv_setpvf_nocontext' => {'text' => '','name' => 'sv_setpvf_nocontext'},'sv_nounlocking' => {'text' => 'Dummy routine which "unlocks" an SV when there is no locking module present.
+	SV*	av_shift(AV *av)','name' => 'av_shift'},'sv_setpvf_nocontext' => {'text' => '','name' => 'sv_setpvf_nocontext'},'HvENAMEUTF8' => {'text' => 'Returns true if the effective name is in UTF8 encoding.
+
+	unsigned char HvENAMEUTF8(HV *stash)','name' => 'HvENAMEUTF8'},'sv_nounlocking' => {'text' => 'Dummy routine which "unlocks" an SV when there is no locking module present.
 Exists to avoid test for a NULL function pointer and because it could
 potentially warn under some level of strict-ness.
 
@@ -469,7 +493,10 @@ optimise.
 
 	void *	CopyD(void* src, void* dest, int nitems, type)','name' => 'CopyD'},'sv_setiv_mg' => {'text' => 'Like C<sv_setiv>, but also handles \'set\' magic.
 
-	void	sv_setiv_mg(SV *const sv, const IV i)','name' => 'sv_setiv_mg'},'newFOROP' => {'text' => 'Constructs, checks, and returns an op tree expressing a C<foreach>
+	void	sv_setiv_mg(SV *const sv, const IV i)','name' => 'sv_setiv_mg'},'sv_does_pvn' => {'text' => 'Like L</sv_does_sv>, but takes a string/length pair instead of an SV.
+
+	bool	sv_does_pvn(SV* sv, const char *const name,
+		            const STRLEN len, U32 flags)','name' => 'sv_does_pvn'},'newFOROP' => {'text' => 'Constructs, checks, and returns an op tree expressing a C<foreach>
 loop (iteration through a list of values).  This is a heavyweight loop,
 with structure that allows exiting the loop by C<last> and suchlike.
 
@@ -499,10 +526,23 @@ which is shared between threads. (With the specific difference that a NULL
 pointer is not acceptable)
 
 	char*	savesharedpvn(const char *const pv,
-		              const STRLEN len)','name' => 'savesharedpvn'},'SvCUR_set' => {'text' => 'Set the current length of the string which is in the SV.  See C<SvCUR>
+		              const STRLEN len)','name' => 'savesharedpvn'},'utf8_to_uvchr_buf' => {'text' => 'Returns the native code point of the first character in the string C<s> which
+is assumed to be in UTF-8 encoding; C<send> points to 1 beyond the end of C<s>.
+C<*retlen> will be set to the length, in bytes, of that character.
+
+If C<s> does not point to a well-formed UTF-8 character and UTF8 warnings are
+enabled, zero is returned and C<*retlen> is set (if C<retlen> isn\'t
+NULL) to -1.  If those warnings are off, the computed value if well-defined (or
+the Unicode REPLACEMENT CHARACTER, if not) is silently returned, and C<*retlen>
+is set (if C<retlen> isn\'t NULL) so that (S<C<s> + C<*retlen>>) is the
+next possible position in C<s> that could begin a non-malformed character.
+See L</utf8n_to_uvuni> for details on when the REPLACEMENT CHARACTER is returned.
+
+	UV	utf8_to_uvchr_buf(const U8 *s, const U8 *send,
+		                  STRLEN *retlen)','name' => 'utf8_to_uvchr_buf'},'SvCUR_set' => {'text' => 'Set the current length of the string which is in the SV.  See C<SvCUR>
 and C<SvIV_set>.
 
-	void	SvCUR_set(SV* sv, STRLEN len)','name' => 'SvCUR_set'},'sv_2pv' => {'text' => '','name' => 'sv_2pv'},'SvNOK' => {'text' => 'Returns a U32 value indicating whether the SV contains a double.
+	void	SvCUR_set(SV* sv, STRLEN len)','name' => 'SvCUR_set'},'_is_utf8_quotemeta' => {'text' => '','name' => '_is_utf8_quotemeta'},'sv_2pv' => {'text' => '','name' => 'sv_2pv'},'SvNOK' => {'text' => 'Returns a U32 value indicating whether the SV contains a double.
 
 	U32	SvNOK(SV* sv)','name' => 'SvNOK'},'mPUSHn' => {'text' => 'Push a double onto the stack.  The stack must have room for this element.
 Does not use C<TARG>.  See also C<PUSHn>, C<mXPUSHn> and C<XPUSHn>.
@@ -522,14 +562,14 @@ removed without notice.
 	COPHH *	cophh_delete_pv(const COPHH *cophh,
 		                const char *key, U32 hash,
 		                U32 flags)','name' => 'cophh_delete_pv'},'sv_2pv_flags' => {'text' => 'Returns a pointer to the string value of an SV, and sets *lp to its length.
-If flags includes SV_GMAGIC, does an mg_get() first. Coerces sv to a string
-if necessary.
-Normally invoked via the C<SvPV_flags> macro. C<sv_2pv()> and C<sv_2pv_nomg>
-usually end up here too.
+If flags includes SV_GMAGIC, does an mg_get() first.  Coerces sv to a
+string if necessary.  Normally invoked via the C<SvPV_flags> macro.
+C<sv_2pv()> and C<sv_2pv_nomg> usually end up here too.
 
 	char*	sv_2pv_flags(SV *const sv, STRLEN *const lp,
-		             const I32 flags)','name' => 'sv_2pv_flags'},'push_scope' => {'text' => '','name' => 'push_scope'},'SvNVx' => {'text' => 'Coerces the given SV to a double and returns it. Guarantees to evaluate
-C<sv> only once. Only use this if C<sv> is an expression with side effects,
+		             const I32 flags)','name' => 'sv_2pv_flags'},'push_scope' => {'text' => '','name' => 'push_scope'},'SvNVx' => {'text' => 'Coerces the given SV to a double and returns it.
+Guarantees to evaluate C<sv> only once.  Only use
+this if C<sv> is an expression with side effects,
 otherwise use the more efficient C<SvNV>.
 
 	NV	SvNVx(SV* sv)','name' => 'SvNVx'},'setdefout' => {'text' => 'Sets PL_defoutgv, the default file handle for output, to the passed in
@@ -537,9 +577,13 @@ typeglob. As PL_defoutgv "owns" a reference on its typeglob, the reference
 count of the passed in typeglob is increased by one, and the reference count
 of the typeglob that PL_defoutgv points to is decreased by one.
 
-	void	setdefout(GV* gv)','name' => 'setdefout'},'form_nocontext' => {'text' => '','name' => 'form_nocontext'},'hv_store' => {'text' => 'Stores an SV in a hash.  The hash key is specified as C<key> and C<klen> is
-the length of the key.  The C<hash> parameter is the precomputed hash
-value; if it is zero then Perl will compute it.  The return value will be
+	void	setdefout(GV* gv)','name' => 'setdefout'},'form_nocontext' => {'text' => '','name' => 'form_nocontext'},'hv_store' => {'text' => 'Stores an SV in a hash.  The hash key is specified as C<key> and the
+absolute value of C<klen> is the length of the key.  If C<klen> is
+negative the key is assumed to be in UTF-8-encoded Unicode.  The
+C<hash> parameter is the precomputed hash value; if it is zero then
+Perl will compute it.
+
+The return value will be
 NULL if the operation failed or if the value did not need to be actually
 stored within the hash (as in the case of tied hashes).  Otherwise it can
 be dereferenced to get the original C<SV*>.  Note that the caller is
@@ -629,7 +673,43 @@ the immediately surrounding code.
 	CV *	cv_clone(CV *proto)','name' => 'cv_clone'},'is_uni_upper_lc' => {'text' => '','name' => 'is_uni_upper_lc'},'do_aspawn' => {'text' => '','name' => 'do_aspawn'},'sv_pvn' => {'text' => 'A private implementation of the C<SvPV> macro for compilers which can\'t
 cope with complex macro expressions. Always use the macro instead.
 
-	char*	sv_pvn(SV *sv, STRLEN *lp)','name' => 'sv_pvn'},'do_openn' => {'text' => '','name' => 'do_openn'},'mro_get_from_name' => {'text' => '','name' => 'mro_get_from_name'},'sv_setref_iv' => {'text' => 'Copies an integer into a new SV, optionally blessing the SV.  The C<rv>
+	char*	sv_pvn(SV *sv, STRLEN *lp)','name' => 'sv_pvn'},'do_openn' => {'text' => '','name' => 'do_openn'},'wrap_op_checker' => {'text' => 'Puts a C function into the chain of check functions for a specified op
+type.  This is the preferred way to manipulate the L</PL_check> array.
+I<opcode> specifies which type of op is to be affected.  I<new_checker>
+is a pointer to the C function that is to be added to that opcode\'s
+check chain, and I<old_checker_p> points to the storage location where a
+pointer to the next function in the chain will be stored.  The value of
+I<new_pointer> is written into the L</PL_check> array, while the value
+previously stored there is written to I<*old_checker_p>.
+
+L</PL_check> is global to an entire process, and a module wishing to
+hook op checking may find itself invoked more than once per process,
+typically in different threads.  To handle that situation, this function
+is idempotent.  The location I<*old_checker_p> must initially (once
+per process) contain a null pointer.  A C variable of static duration
+(declared at file scope, typically also marked C<static> to give
+it internal linkage) will be implicitly initialised appropriately,
+if it does not have an explicit initialiser.  This function will only
+actually modify the check chain if it finds I<*old_checker_p> to be null.
+This function is also thread safe on the small scale.  It uses appropriate
+locking to avoid race conditions in accessing L</PL_check>.
+
+When this function is called, the function referenced by I<new_checker>
+must be ready to be called, except for I<*old_checker_p> being unfilled.
+In a threading situation, I<new_checker> may be called immediately,
+even before this function has returned.  I<*old_checker_p> will always
+be appropriately set before I<new_checker> is called.  If I<new_checker>
+decides not to do anything special with an op that it is given (which
+is the usual case for most uses of op check hooking), it must chain the
+check function referenced by I<*old_checker_p>.
+
+If you want to influence compilation of calls to a specific subroutine,
+then use L</cv_set_call_checker> rather than hooking checking of all
+C<entersub> ops.
+
+	void	wrap_op_checker(Optype opcode,
+		                Perl_check_t new_checker,
+		                Perl_check_t *old_checker_p)','name' => 'wrap_op_checker'},'mro_get_from_name' => {'text' => '','name' => 'mro_get_from_name'},'sv_setref_iv' => {'text' => 'Copies an integer into a new SV, optionally blessing the SV.  The C<rv>
 argument will be upgraded to an RV.  That RV will be modified to point to
 the new SV.  The C<classname> argument indicates the package for the
 blessing.  Set C<classname> to C<NULL> to avoid the blessing.  The new SV
@@ -640,11 +720,16 @@ will have a reference count of 1, and the RV will be returned.
 		             const IV iv)','name' => 'sv_setref_iv'},'sv_chop' => {'text' => 'Efficient removal of characters from the beginning of the string buffer.
 SvPOK(sv) must be true and the C<ptr> must be a pointer to somewhere inside
 the string buffer.  The C<ptr> becomes the first character of the adjusted
-string. Uses the "OOK hack".
+string.  Uses the "OOK hack".
+
 Beware: after this function returns, C<ptr> and SvPVX_const(sv) may no longer
 refer to the same chunk of data.
 
-	void	sv_chop(SV *const sv, const char *const ptr)','name' => 'sv_chop'},'sv_backoff' => {'text' => 'Remove any string offset. You should normally use the C<SvOOK_off> macro
+The unfortunate similarity of this function\'s name to that of Perl\'s C<chop>
+operator is strictly coincidental.  This function works from the left;
+C<chop> works from the right.
+
+	void	sv_chop(SV *const sv, const char *const ptr)','name' => 'sv_chop'},'sv_backoff' => {'text' => 'Remove any string offset.  You should normally use the C<SvOOK_off> macro
 wrapper instead.
 
 	int	sv_backoff(SV *const sv)','name' => 'sv_backoff'},'reentrant_retry' => {'text' => '','name' => 'reentrant_retry'},'XPUSHu' => {'text' => 'Push an unsigned integer onto the stack, extending the stack if necessary.
@@ -666,7 +751,7 @@ C<SvPV_nolen> macro.
 	STRLEN	PL_na','name' => 'PL_na'},'newSViv' => {'text' => 'Creates a new SV and copies an integer into it.  The reference count for the
 SV is set to 1.
 
-	SV*	newSViv(const IV i)','name' => 'newSViv'},'gv_name_set' => {'text' => '','name' => 'gv_name_set'},'sv_untaint' => {'text' => 'Untaint an SV. Use C<SvTAINTED_off> instead.
+	SV*	newSViv(const IV i)','name' => 'newSViv'},'gv_name_set' => {'text' => '','name' => 'gv_name_set'},'sv_untaint' => {'text' => 'Untaint an SV.  Use C<SvTAINTED_off> instead.
 
 	void	sv_untaint(SV *const sv)','name' => 'sv_untaint'},'Newxz' => {'text' => 'The XSUB-writer\'s interface to the C C<malloc> function.  The allocated
 memory is zeroed with C<memzero>.  See also C<Newx>.
@@ -726,15 +811,19 @@ of C<op_private>, except that the bit with value 1 or 2 is automatically
 set as required.
 
 	OP *	newASSIGNOP(I32 flags, OP *left, I32 optype,
-		            OP *right)','name' => 'newASSIGNOP'},'hv_undef' => {'text' => 'Undefines the hash.  The XS equivalent of undef(%hash).
+		            OP *right)','name' => 'newASSIGNOP'},'SvSetMagicSV_nosteal' => {'text' => 'Like C<SvSetSV_nosteal>, but does any set magic required afterwards.
+
+	void	SvSetMagicSV_nosteal(SV* dsv, SV* ssv)','name' => 'SvSetMagicSV_nosteal'},'hv_undef' => {'text' => 'Undefines the hash.  The XS equivalent of C<undef(%hash)>.
 
 As well as freeing all the elements of the hash (like hv_clear()), this
 also frees any auxiliary data and storage associated with the hash.
+
+If any destructors are triggered as a result, the hv itself may
+be freed.
+
 See also L</hv_clear>.
 
-	void	hv_undef(HV *hv)','name' => 'hv_undef'},'SvSetMagicSV_nosteal' => {'text' => 'Like C<SvSetSV_nosteal>, but does any set magic required afterwards.
-
-	void	SvSetMagicSV_nosteal(SV* dsv, SV* ssv)','name' => 'SvSetMagicSV_nosteal'},'clone_params_del' => {'text' => '','name' => 'clone_params_del'},'sv_isobject' => {'text' => 'Returns a boolean indicating whether the SV is an RV pointing to a blessed
+	void	hv_undef(HV *hv)','name' => 'hv_undef'},'clone_params_del' => {'text' => '','name' => 'clone_params_del'},'sv_isobject' => {'text' => 'Returns a boolean indicating whether the SV is an RV pointing to a blessed
 object.  If the SV is not an RV, or if the object is not blessed, then this
 will return false.
 
@@ -749,7 +838,7 @@ associated with the key.
 	SV *	cop_hints_fetch_pvn(const COP *cop,
 		                    const char *keypv,
 		                    STRLEN keylen, U32 hash,
-		                    U32 flags)','name' => 'cop_hints_fetch_pvn'},'gv_efullname4' => {'text' => '','name' => 'gv_efullname4'},'SvIV' => {'text' => 'Coerces the given SV to an integer and returns it. See C<SvIVx> for a
+		                    U32 flags)','name' => 'cop_hints_fetch_pvn'},'gv_efullname4' => {'text' => '','name' => 'gv_efullname4'},'SvIV' => {'text' => 'Coerces the given SV to an integer and returns it.  See C<SvIVx> for a
 version which guarantees to evaluate sv only once.
 
 	IV	SvIV(SV* sv)','name' => 'SvIV'},'isASCII' => {'text' => 'Returns a boolean indicating whether the specified character is one of the 128
@@ -761,7 +850,7 @@ C<isASCII_L1()> are identical to C<isASCII()>.
 hint entries in the cop I<cop>.  I<flags> is currently unused and must
 be zero.
 
-	HV *	cop_hints_2hv(const COP *cop, U32 flags)','name' => 'cop_hints_2hv'},'sv_collxfrm_flags' => {'text' => 'Add Collate Transform magic to an SV if it doesn\'t already have it. If the
+	HV *	cop_hints_2hv(const COP *cop, U32 flags)','name' => 'cop_hints_2hv'},'sv_collxfrm_flags' => {'text' => 'Add Collate Transform magic to an SV if it doesn\'t already have it.  If the
 flags contain SV_GMAGIC, it handles get-magic.
 
 Any scalar variable may carry PERL_MAGIC_collxfrm magic that contains the
@@ -817,7 +906,7 @@ side-effect.
 
 Usually accessed via the C<SvPVbyte> macro.
 
-	char*	sv_2pvbyte(SV *const sv, STRLEN *const lp)','name' => 'sv_2pvbyte'},'fbm_instr' => {'text' => 'Returns the location of the SV in the string delimited by C<str> and
+	char*	sv_2pvbyte(SV *sv, STRLEN *const lp)','name' => 'sv_2pvbyte'},'fbm_instr' => {'text' => 'Returns the location of the SV in the string delimited by C<str> and
 C<strend>.  It returns C<NULL> if the string can\'t be found.  The C<sv>
 does not have to be fbm_compiled, but the search will not be as fast
 then.
@@ -844,14 +933,18 @@ Usually used via its frontend C<sv_catpvf>.
 		           va_list *const args)','name' => 'sv_vcatpvf'},'sv_pos_u2b' => {'text' => 'Converts the value pointed to by offsetp from a count of UTF-8 chars from
 the start of the string, to a count of the equivalent number of bytes; if
 lenp is non-zero, it does the same to lenp, but this time starting from
-the offset, rather than from the start of the string. Handles magic and
+the offset, rather than from the start of the string.  Handles magic and
 type coercion.
 
 Use C<sv_pos_u2b_flags> in preference, which correctly handles strings longer
 than 2Gb.
 
 	void	sv_pos_u2b(SV *const sv, I32 *const offsetp,
-		           I32 *const lenp)','name' => 'sv_pos_u2b'},'is_utf8_xdigit' => {'text' => '','name' => 'is_utf8_xdigit'},'upg_version' => {'text' => 'In-place upgrade of the supplied SV to a version object.
+		           I32 *const lenp)','name' => 'sv_pos_u2b'},'boolSV' => {'text' => 'Returns a true SV if C<b> is a true value, or a false SV if C<b> is 0.
+
+See also C<PL_sv_yes> and C<PL_sv_no>.
+
+	SV *	boolSV(bool b)','name' => 'boolSV'},'is_utf8_xdigit' => {'text' => '','name' => 'is_utf8_xdigit'},'upg_version' => {'text' => 'In-place upgrade of the supplied SV to a version object.
 
     SV *sv = upg_version(SV *sv, bool qv);
 
@@ -862,13 +955,22 @@ to force this SV to be interpreted as an "extended" version.
 run Perl interpreters. This should be called only once, before creating
 any Perl interpreters.
 
-	void	PERL_SYS_INIT3(int argc, char** argv, char** env)','name' => 'PERL_SYS_INIT3'},'HeSVKEY_set' => {'text' => 'Sets the key to a given C<SV*>, taking care to set the appropriate flags to
+	void	PERL_SYS_INIT3(int argc, char** argv,
+		               char** env)','name' => 'PERL_SYS_INIT3'},'HeSVKEY_set' => {'text' => 'Sets the key to a given C<SV*>, taking care to set the appropriate flags to
 indicate the presence of an C<SV*> key, and returns the same
 C<SV*>.
 
-	SV*	HeSVKEY_set(HE* he, SV* sv)','name' => 'HeSVKEY_set'},'is_utf8_perl_space' => {'text' => '','name' => 'is_utf8_perl_space'},'SPAGAIN' => {'text' => 'Refetch the stack pointer.  Used after a callback.  See L<perlcall>.
+	SV*	HeSVKEY_set(HE* he, SV* sv)','name' => 'HeSVKEY_set'},'is_utf8_perl_space' => {'text' => '','name' => 'is_utf8_perl_space'},'sv_derived_from_sv' => {'text' => 'Exactly like L</sv_derived_from_pvn>, but takes the name string in the form
+of an SV instead of a string/length pair.
 
-		SPAGAIN;','name' => 'SPAGAIN'},'newCVREF' => {'text' => '','name' => 'newCVREF'},'my_bcopy' => {'text' => '','name' => 'my_bcopy'},'PL_parser-E<gt>bufptr' => {'text' => 'Points to the current position of lexing inside the lexer buffer.
+	bool	sv_derived_from_sv(SV* sv, SV *namesv,
+		                   U32 flags)','name' => 'sv_derived_from_sv'},'SPAGAIN' => {'text' => 'Refetch the stack pointer.  Used after a callback.  See L<perlcall>.
+
+		SPAGAIN;','name' => 'SPAGAIN'},'newCVREF' => {'text' => '','name' => 'newCVREF'},'gv_init_sv' => {'text' => 'Same as gv_init_pvn(), but takes an SV * for the name instead of separate
+char * and length parameters.  C<flags> is currently unused.
+
+	void	gv_init_sv(GV* gv, HV* stash, SV* namesv,
+		           U32 flags)','name' => 'gv_init_sv'},'my_bcopy' => {'text' => '','name' => 'my_bcopy'},'PL_parser-E<gt>bufptr' => {'text' => 'Points to the current position of lexing inside the lexer buffer.
 Characters around this point may be freely examined, within
 the range delimited by C<SvPVX(L</PL_parser-E<gt>linestr>)> and
 L</PL_parser-E<gt>bufend>.  The octets of the buffer may be intended to be
@@ -901,14 +1003,13 @@ from which code will be read to be parsed.  If both are non-null, the
 code in I<line> comes first and must consist of complete lines of input,
 and I<rsfp> supplies the remainder of the source.
 
-The I<flags> parameter is reserved for future use, and must always
-be zero, except for one flag that is currently reserved for perl\'s internal
-use.
+The I<flags> parameter is reserved for future use.  Currently it is only
+used by perl internally, so extensions should always pass zero.
 
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	void	lex_start(SV *line, PerlIO *rsfp, U32 flags)','name' => 'lex_start'},'hv_riter_set' => {'text' => '','name' => 'hv_riter_set'},'to_uni_lower' => {'text' => '','name' => 'to_uni_lower'},'dounwind' => {'text' => '','name' => 'dounwind'},'ptr_table_clear' => {'text' => '','name' => 'ptr_table_clear'},'uvchr_to_utf8_flags' => {'text' => '','name' => 'uvchr_to_utf8_flags'},'save_hash' => {'text' => '','name' => 'save_hash'},'sv_isa' => {'text' => 'Returns a boolean indicating whether the SV is blessed into the specified
+	void	lex_start(SV *line, PerlIO *rsfp, U32 flags)','name' => 'lex_start'},'hv_riter_set' => {'text' => '','name' => 'hv_riter_set'},'gv_autoload_pvn' => {'text' => '','name' => 'gv_autoload_pvn'},'to_uni_lower' => {'text' => '','name' => 'to_uni_lower'},'gv_autoload_pv' => {'text' => '','name' => 'gv_autoload_pv'},'dounwind' => {'text' => '','name' => 'dounwind'},'ptr_table_clear' => {'text' => '','name' => 'ptr_table_clear'},'uvchr_to_utf8_flags' => {'text' => '','name' => 'uvchr_to_utf8_flags'},'save_hash' => {'text' => '','name' => 'save_hash'},'sv_isa' => {'text' => 'Returns a boolean indicating whether the SV is blessed into the specified
 class.  This does not check for subtypes; use C<sv_derived_from> to verify
 an inheritance relationship.
 
@@ -927,7 +1028,7 @@ output to an SV.  If the appended data contains "wide" characters
 (including, but not limited to, SVs with a UTF-8 PV formatted with %s,
 and characters >255 formatted with %c), the original SV might get
 upgraded to UTF-8.  Handles \'get\' magic, but not \'set\' magic.  See
-C<sv_catpvf_mg>. If the original SV was UTF-8, the pattern should be
+C<sv_catpvf_mg>.  If the original SV was UTF-8, the pattern should be
 valid UTF-8; if the original SV was bytes, the pattern should be too.
 
 	void	sv_catpvf(SV *const sv, const char *const pat,
@@ -937,18 +1038,29 @@ The flags pointer may be set to C<SVf_UTF8> or 0.
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	const char * cop_fetch_label(COP *const cop, STRLEN *len,
-	                             U32 *flags)','name' => 'cop_fetch_label'},'XSRETURN_PV' => {'text' => 'Return a copy of a string from an XSUB immediately.  Uses C<XST_mPV>.
+	const char * cop_fetch_label(COP *const cop,
+	                             STRLEN *len, U32 *flags)','name' => 'cop_fetch_label'},'XSRETURN_PV' => {'text' => 'Return a copy of a string from an XSUB immediately.  Uses C<XST_mPV>.
 
-	void	XSRETURN_PV(char* str)','name' => 'XSRETURN_PV'},'utf8_to_uvuni' => {'text' => 'Returns the Unicode code point of the first character in the string C<s>
+	void	XSRETURN_PV(char* str)','name' => 'XSRETURN_PV'},'utf8_to_uvuni' => {'text' => 'DEPRECATED!
+
+Returns the Unicode code point of the first character in the string C<s>
 which is assumed to be in UTF-8 encoding; C<retlen> will be set to the
 length, in bytes, of that character.
 
 This function should only be used when the returned UV is considered
 an index into the Unicode semantic tables (e.g. swashes).
 
-If C<s> does not point to a well-formed UTF-8 character, zero is
-returned and retlen is set, if possible, to -1.
+Some, but not all, UTF-8 malformations are detected, and in fact, some
+malformed input could cause reading beyond the end of the input buffer, which
+is why this function is deprecated.  Use L</utf8_to_uvuni_buf> instead.
+
+If C<s> points to one of the detected malformations, and UTF8 warnings are
+enabled, zero is returned and C<*retlen> is set (if C<retlen> doesn\'t point to
+NULL) to -1.  If those warnings are off, the computed value if well-defined (or
+the Unicode REPLACEMENT CHARACTER, if not) is silently returned, and C<*retlen>
+is set (if C<retlen> isn\'t NULL) so that (S<C<s> + C<*retlen>>) is the
+next possible position in C<s> that could begin a non-malformed character.
+See L</utf8n_to_uvuni> for details on when the REPLACEMENT CHARACTER is returned.
 
 	UV	utf8_to_uvuni(const U8 *s, STRLEN *retlen)','name' => 'utf8_to_uvuni'},'is_utf8_idcont' => {'text' => '','name' => 'is_utf8_idcont'},'pad_alloc' => {'text' => 'Allocates a place in the currently-compiling pad,
 returning the offset of the allocated pad slot.
@@ -1082,10 +1194,11 @@ through normal scalar means.
 
 NOTE: this function is experimental and may change or be
 removed without notice.','name' => 'PL_parser-E<gt>linestr'},'hv_riter_p' => {'text' => '','name' => 'hv_riter_p'},'newSVpvn_share' => {'text' => 'Creates a new SV with its SvPVX_const pointing to a shared string in the string
-table. If the string does not already exist in the table, it is created
-first.  Turns on READONLY and FAKE. If the C<hash> parameter is non-zero, that
-value is used; otherwise the hash is computed. The string\'s hash can be later
-be retrieved from the SV with the C<SvSHARED_HASH()> macro. The idea here is
+table.  If the string does not already exist in the table, it is
+created first.  Turns on READONLY and FAKE.  If the C<hash> parameter
+is non-zero, that value is used; otherwise the hash is computed.
+The string\'s hash can later be retrieved from the SV
+with the C<SvSHARED_HASH()> macro.  The idea here is
 that as the string table is used for shared hash keys these strings will have
 SvPVX_const == HeKEY and hash lookup will avoid string compare.
 
@@ -1158,8 +1271,8 @@ see C<hv_iterinit>.
 
 	SV*	hv_iterkeysv(HE* entry)','name' => 'hv_iterkeysv'},'sv_catpv_flags' => {'text' => 'Concatenates the string onto the end of the string which is in the SV.
 If the SV has the UTF-8 status set, then the bytes appended should
-be valid UTF-8.  If C<flags> has C<SV_GMAGIC> bit set, will C<mg_get>
-on the SVs if appropriate, else not.
+be valid UTF-8.  If C<flags> has the C<SV_SMAGIC> bit set, will C<mg_set>
+on the modified SV if appropriate.
 
 	void	sv_catpv_flags(SV *dstr, const char *sstr,
 		               const I32 flags)','name' => 'sv_catpv_flags'},'mPUSHp' => {'text' => 'Push a string onto the stack.  The stack must have room for this element.
@@ -1220,17 +1333,18 @@ this function and become part of the constructed op tree.
 	OP *	newCONDOP(I32 flags, OP *first, OP *trueop,
 		          OP *falseop)','name' => 'newCONDOP'},'save_pushi32ptr' => {'text' => '','name' => 'save_pushi32ptr'},'sv_setpvs' => {'text' => 'Like C<sv_setpvn>, but takes a literal string instead of a string/length pair.
 
-	void	sv_setpvs(SV* sv, const char* s)','name' => 'sv_setpvs'},'is_uni_punct_lc' => {'text' => '','name' => 'is_uni_punct_lc'},'cxinc' => {'text' => '','name' => 'cxinc'},'SvUVx' => {'text' => 'Coerces the given SV to an unsigned integer and returns it. Guarantees to
-C<sv> only once. Only use this if C<sv> is an expression with side effects,
+	void	sv_setpvs(SV* sv, const char* s)','name' => 'sv_setpvs'},'is_uni_punct_lc' => {'text' => '','name' => 'is_uni_punct_lc'},'cxinc' => {'text' => '','name' => 'cxinc'},'SvUVx' => {'text' => 'Coerces the given SV to an unsigned integer and
+returns it.  Guarantees to C<sv> only once.  Only
+use this if C<sv> is an expression with side effects,
 otherwise use the more efficient C<SvUV>.
 
 	UV	SvUVx(SV* sv)','name' => 'SvUVx'},'SvROK_on' => {'text' => 'Tells an SV that it is an RV.
 
 	void	SvROK_on(SV* sv)','name' => 'SvROK_on'},'G_VOID' => {'text' => 'Used to indicate void context.  See C<GIMME_V> and L<perlcall>.','name' => 'G_VOID'},'sv_clear' => {'text' => 'Clear an SV: call any destructors, free up any memory used by the body,
-and free the body itself. The SV\'s head is I<not> freed, although
+and free the body itself.  The SV\'s head is I<not> freed, although
 its type is set to all 1\'s so that it won\'t inadvertently be assumed
 to be live during global destruction etc.
-This function should only be called when REFCNT is zero. Most of the time
+This function should only be called when REFCNT is zero.  Most of the time
 you\'ll want to call C<sv_free()> (or its macro wrapper C<SvREFCNT_dec>)
 instead.
 
@@ -1250,10 +1364,12 @@ removed without notice.
 
 	void	lex_read_space(U32 flags)','name' => 'lex_read_space'},'XSRETURN_NV' => {'text' => 'Return a double from an XSUB immediately.  Uses C<XST_mNV>.
 
-	void	XSRETURN_NV(NV nv)','name' => 'XSRETURN_NV'},'SvGAMAGIC' => {'text' => 'Returns true if the SV has get magic or overloading. If either is true then
+	void	XSRETURN_NV(NV nv)','name' => 'XSRETURN_NV'},'SvGAMAGIC' => {'text' => 'Returns true if the SV has get magic or
+overloading.  If either is true then
 the scalar is active data, and has the potential to return a new value every
-time it is accessed. Hence you must be careful to only read it once per user
-logical operation and work with that returned value. If neither is true then
+time it is accessed.  Hence you must be careful to
+only read it once per user logical operation and work
+with that returned value.  If neither is true then
 the scalar\'s value cannot change unless written to.
 
 	U32	SvGAMAGIC(SV* sv)','name' => 'SvGAMAGIC'},'svtype' => {'text' => 'An enum of flags for Perl types.  These are found in the file B<sv.h>
@@ -1261,7 +1377,7 @@ in the C<svtype> enum.  Test these flags with the C<SvTYPE> macro.','name' => 's
 Note that the actual module name, not its filename, should be given.
 Eg, "Foo::Bar" instead of "Foo/Bar.pm".  flags can be any of
 PERL_LOADMOD_DENY, PERL_LOADMOD_NOIMPORT, or PERL_LOADMOD_IMPORT_OPS
-(or 0 for no flags). ver, if specified, provides version semantics
+(or 0 for no flags). ver, if specified and not NULL, provides version semantics
 similar to C<use Foo::Bar VERSION>.  The optional trailing SV*
 arguments can be used to specify arguments to the module\'s import()
 method, similar to C<use Foo::Bar VERSION LIST>.  They must be
@@ -1270,12 +1386,14 @@ be omitted when the PERL_LOADMOD_NOIMPORT flag has been used.
 Otherwise at least a single NULL pointer to designate the default
 import list is required.
 
+The reference count for each specified C<SV*> parameter is decremented.
+
 	void	load_module(U32 flags, SV* name, SV* ver, ...)','name' => 'load_module'},'dump_eval' => {'text' => '','name' => 'dump_eval'},'Poison' => {'text' => 'PoisonWith(0xEF) for catching access to freed memory.
 
 	void	Poison(void* dest, int nitems, type)','name' => 'Poison'},'is_uni_alpha_lc' => {'text' => '','name' => 'is_uni_alpha_lc'},'sv_catpvf_mg' => {'text' => 'Like C<sv_catpvf>, but also handles \'set\' magic.
 
-	void	sv_catpvf_mg(SV *const sv, const char *const pat,
-		             ...)','name' => 'sv_catpvf_mg'},'get_sv' => {'text' => 'Returns the SV of the specified Perl scalar.  C<flags> are passed to
+	void	sv_catpvf_mg(SV *const sv,
+		             const char *const pat, ...)','name' => 'sv_catpvf_mg'},'get_sv' => {'text' => 'Returns the SV of the specified Perl scalar.  C<flags> are passed to
 C<gv_fetchpv>. If C<GV_ADD> is set and the
 Perl variable does not exist then it will be created.  If C<flags> is zero
 and the variable does not exist then NULL is returned.
@@ -1319,15 +1437,17 @@ removed without notice.
 	bool	lex_next_chunk(U32 flags)','name' => 'lex_next_chunk'},'sv_2mortal' => {'text' => 'Marks an existing SV as mortal.  The SV will be destroyed "soon", either
 by an explicit call to FREETMPS, or by an implicit call at places such as
 statement boundaries.  SvTEMP() is turned on which means that the SV\'s
-string buffer can be "stolen" if this SV is copied. See also C<sv_newmortal>
+string buffer can be "stolen" if this SV is copied.  See also C<sv_newmortal>
 and C<sv_mortalcopy>.
 
 	SV*	sv_2mortal(SV *const sv)','name' => 'sv_2mortal'},'sv_2bool_flags' => {'text' => 'This function is only used by sv_true() and friends,  and only if
-the latter\'s argument is neither SvPOK, SvIOK nor SvNOK. If the flags
+the latter\'s argument is neither SvPOK, SvIOK nor SvNOK.  If the flags
 contain SV_GMAGIC, then it does an mg_get() first.
 
 
-	bool	sv_2bool_flags(SV *const sv, const I32 flags)','name' => 'sv_2bool_flags'},'is_uni_graph' => {'text' => '','name' => 'is_uni_graph'},'malloc' => {'text' => '','name' => 'malloc'},'av_undef' => {'text' => 'Undefines the array.  Frees the memory used by the array itself.
+	bool	sv_2bool_flags(SV *const sv, const I32 flags)','name' => 'sv_2bool_flags'},'is_uni_graph' => {'text' => '','name' => 'is_uni_graph'},'malloc' => {'text' => '','name' => 'malloc'},'av_undef' => {'text' => 'Undefines the array.  Frees the memory used by the av to store its list of
+scalars.  If any destructors are triggered as a result, the av itself may
+be freed.
 
 	void	av_undef(AV *av)','name' => 'av_undef'},'parse_label' => {'text' => 'Parse a single label, possibly optional, of the type that may prefix a
 Perl statement.  It is up to the caller to ensure that the dynamic parser
@@ -1346,7 +1466,31 @@ level of parsing which covers all the compilation errors that occurred.
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	SV *	parse_label(U32 flags)','name' => 'parse_label'},'pack_cat' => {'text' => 'The engine implementing pack() Perl function. Note: parameters next_in_list and
+	SV *	parse_label(U32 flags)','name' => 'parse_label'},'PL_check' => {'text' => 'Array, indexed by opcode, of functions that will be called for the "check"
+phase of optree building during compilation of Perl code.  For most (but
+not all) types of op, once the op has been initially built and populated
+with child ops it will be filtered through the check function referenced
+by the appropriate element of this array.  The new op is passed in as the
+sole argument to the check function, and the check function returns the
+completed op.  The check function may (as the name suggests) check the op
+for validity and signal errors.  It may also initialise or modify parts of
+the ops, or perform more radical surgery such as adding or removing child
+ops, or even throw the op away and return a different op in its place.
+
+This array of function pointers is a convenient place to hook into the
+compilation process.  An XS module can put its own custom check function
+in place of any of the standard ones, to influence the compilation of a
+particular type of op.  However, a custom check function must never fully
+replace a standard check function (or even a custom check function from
+another module).  A module modifying checking must instead B<wrap> the
+preexisting check function.  A custom check function must be selective
+about when to apply its custom behaviour.  In the usual case where
+it decides not to do anything special with an op, it must chain the
+preexisting op function.  Check functions are thus linked in a chain,
+with the core\'s base checker at the end.
+
+For thread safety, modules should not write directly to this array.
+Instead, use the function L</wrap_op_checker>.','name' => 'PL_check'},'pack_cat' => {'text' => 'The engine implementing pack() Perl function. Note: parameters next_in_list and
 flags are not used. This call should not be used; use packlist instead.
 
 	void	pack_cat(SV *cat, const char *pat,
@@ -1354,7 +1498,7 @@ flags are not used. This call should not be used; use packlist instead.
 		         SV **endlist, SV ***next_in_list,
 		         U32 flags)','name' => 'pack_cat'},'PerlIO_read' => {'text' => '','name' => 'PerlIO_read'},'sv_cmp' => {'text' => 'Compares the strings in two SVs.  Returns -1, 0, or 1 indicating whether the
 string in C<sv1> is less than, equal to, or greater than the string in
-C<sv2>. Is UTF-8 and \'use bytes\' aware, handles get magic, and will
+C<sv2>.  Is UTF-8 and \'use bytes\' aware, handles get magic, and will
 coerce its args to strings if necessary.  See also C<sv_cmp_locale>.
 
 	I32	sv_cmp(SV *const sv1, SV *const sv2)','name' => 'sv_cmp'},'mg_free' => {'text' => 'Free any magic storage used by the SV.  See C<sv_magic>.
@@ -1362,11 +1506,12 @@ coerce its args to strings if necessary.  See also C<sv_cmp_locale>.
 	int	mg_free(SV* sv)','name' => 'mg_free'},'sv_force_normal_flags' => {'text' => 'Undo various types of fakery on an SV: if the PV is a shared string, make
 a private copy; if we\'re a ref, stop refing; if we\'re a glob, downgrade to
 an xpvmg; if we\'re a copy-on-write scalar, this is the on-write time when
-we do the copy, and is also used locally. If C<SV_COW_DROP_PV> is set
+we do the copy, and is also used locally.  If C<SV_COW_DROP_PV> is set
 then a copy-on-write scalar drops its PV buffer (if any) and becomes
-SvPOK_off rather than making a copy. (Used where this scalar is about to be
-set to some other value.) In addition, the C<flags> parameter gets passed to
-C<sv_unref_flags()> when unreffing. C<sv_force_normal> calls this function
+SvPOK_off rather than making a copy.  (Used where this
+scalar is about to be set to some other value.)  In addition,
+the C<flags> parameter gets passed to C<sv_unref_flags()>
+when unreffing.  C<sv_force_normal> calls this function
 with flags set to 0.
 
 	void	sv_force_normal_flags(SV *const sv,
@@ -1378,14 +1523,25 @@ removed without notice.
 
 	SV *	cophh_fetch_pv(const COPHH *cophh,
 		               const char *key, U32 hash,
-		               U32 flags)','name' => 'cophh_fetch_pv'},'tmps_grow' => {'text' => '','name' => 'tmps_grow'},'is_utf8_char' => {'text' => 'Tests if some arbitrary number of bytes begins in a valid UTF-8
+		               U32 flags)','name' => 'cophh_fetch_pv'},'tmps_grow' => {'text' => '','name' => 'tmps_grow'},'is_utf8_char' => {'text' => 'DEPRECATED!
+
+Tests if some arbitrary number of bytes begins in a valid UTF-8
 character.  Note that an INVARIANT (i.e. ASCII on non-EBCDIC machines)
 character is a valid UTF-8 character.  The actual number of bytes in the UTF-8
 character will be returned if it is valid, otherwise 0.
 
+This function is deprecated due to the possibility that malformed input could
+cause reading beyond the end of the input buffer.  Use L</is_utf8_char_buf>
+instead.
+
 	STRLEN	is_utf8_char(const U8 *s)','name' => 'is_utf8_char'},'get_vtbl' => {'text' => '','name' => 'get_vtbl'},'save_hints' => {'text' => '','name' => 'save_hints'},'SvNOK_off' => {'text' => 'Unsets the NV status of an SV.
 
-	void	SvNOK_off(SV* sv)','name' => 'SvNOK_off'},'sv_utf8_upgrade' => {'text' => 'Converts the PV of an SV to its UTF-8-encoded form.
+	void	SvNOK_off(SV* sv)','name' => 'SvNOK_off'},'gv_fetchmeth_pv_autoload' => {'text' => 'Exactly like L</gv_fetchmeth_pvn_autoload>, but takes a nul-terminated string
+instead of a string/length pair.
+
+	GV*	gv_fetchmeth_pv_autoload(HV* stash,
+		                         const char* name,
+		                         I32 level, U32 flags)','name' => 'gv_fetchmeth_pv_autoload'},'sv_utf8_upgrade' => {'text' => 'Converts the PV of an SV to its UTF-8-encoded form.
 Forces the SV to string form if it is not already.
 Will C<mg_get> on C<sv> if appropriate.
 Always sets the SvUTF8 flag to avoid future validity checks even
@@ -1473,7 +1629,8 @@ empty list expression.
 	OP *	newNULLLIST()','name' => 'newNULLLIST'},'is_uni_cntrl_lc' => {'text' => '','name' => 'is_uni_cntrl_lc'},'is_utf8_lower' => {'text' => '','name' => 'is_utf8_lower'},'sv_pos_u2b_flags' => {'text' => 'Converts the value pointed to by offsetp from a count of UTF-8 chars from
 the start of the string, to a count of the equivalent number of bytes; if
 lenp is non-zero, it does the same to lenp, but this time starting from
-the offset, rather than from the start of the string. Handles type coercion.
+the offset, rather than from the start
+of the string.  Handles type coercion.
 I<flags> is passed to C<SvPV_flags>, and usually should be
 C<SV_GMAGIC|SV_CONST_RETURN> to handle magic.
 
@@ -1496,9 +1653,9 @@ automatically.  I<debuggable> is currently unused and should always be 1.
 I<has_my> can be supplied as true to force the
 loop body to be enclosed in its own scope.
 
-	OP *	newWHILEOP(I32 flags, I32 debuggable, LOOP *loop,
-		           OP *expr, OP *block, OP *cont,
-		           I32 has_my)','name' => 'newWHILEOP'},'Gv_AMupdate' => {'text' => '','name' => 'Gv_AMupdate'},'filter_del' => {'text' => '','name' => 'filter_del'},'POPp' => {'text' => 'Pops a string off the stack. Deprecated. New code should use POPpx.
+	OP *	newWHILEOP(I32 flags, I32 debuggable,
+		           LOOP *loop, OP *expr, OP *block,
+		           OP *cont, I32 has_my)','name' => 'newWHILEOP'},'Gv_AMupdate' => {'text' => '','name' => 'Gv_AMupdate'},'filter_del' => {'text' => '','name' => 'filter_del'},'POPp' => {'text' => 'Pops a string off the stack. Deprecated. New code should use POPpx.
 
 	char*	POPp','name' => 'POPp'},'SvIV_nomg' => {'text' => 'Like C<SvIV> but doesn\'t process magic.
 
@@ -1515,8 +1672,8 @@ C<sv_magicext>.
 	MAGIC*	mg_findext(const SV* sv, int type,
 		           const MGVTBL *vtbl)','name' => 'mg_findext'},'my_memset' => {'text' => '','name' => 'my_memset'},'my_atof2' => {'text' => '','name' => 'my_atof2'},'PerlIO_get_ptr' => {'text' => '','name' => 'PerlIO_get_ptr'},'save_destructor' => {'text' => '','name' => 'save_destructor'},'sv_cmp_flags' => {'text' => 'Compares the strings in two SVs.  Returns -1, 0, or 1 indicating whether the
 string in C<sv1> is less than, equal to, or greater than the string in
-C<sv2>. Is UTF-8 and \'use bytes\' aware and will coerce its args to strings
-if necessary. If the flags include SV_GMAGIC, it handles get magic. See
+C<sv2>.  Is UTF-8 and \'use bytes\' aware and will coerce its args to strings
+if necessary.  If the flags include SV_GMAGIC, it handles get magic.  See
 also C<sv_cmp_locale_flags>.
 
 	I32	sv_cmp_flags(SV *const sv1, SV *const sv2,
@@ -1535,7 +1692,8 @@ L</lex_read_unichar>.
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	void	lex_read_to(char *ptr)','name' => 'lex_read_to'},'sv_pvbyten_force' => {'text' => 'The backend for the C<SvPVbytex_force> macro. Always use the macro instead.
+	void	lex_read_to(char *ptr)','name' => 'lex_read_to'},'sv_pvbyten_force' => {'text' => 'The backend for the C<SvPVbytex_force> macro.  Always use the macro
+instead.
 
 	char*	sv_pvbyten_force(SV *const sv, STRLEN *const lp)','name' => 'sv_pvbyten_force'},'reg_named_buff_fetch' => {'text' => '','name' => 'reg_named_buff_fetch'},'ibcmp_locale' => {'text' => 'This is a synonym for (! foldEQ_locale())
 
@@ -1591,10 +1749,9 @@ considered internal to OP_NAME and the other access macros: use them instead.
 
 NOTE: this function must be explicitly called as Perl_custom_op_xop with an aTHX_ parameter.
 
-	const XOP * Perl_custom_op_xop(pTHX_ const OP *o)','name' => 'custom_op_xop'},'mro_get_linear_isa' => {'text' => 'Returns either C<mro_get_linear_isa_c3> or
-C<mro_get_linear_isa_dfs> for the given stash,
-dependant upon which MRO is in effect
-for that stash.  The return value is a
+	const XOP * Perl_custom_op_xop(pTHX_ const OP *o)','name' => 'custom_op_xop'},'mro_get_linear_isa' => {'text' => 'Returns the mro linearisation for the given stash.  By default, this
+will be whatever C<mro_get_linear_isa_dfs> returns unless some
+other MRO is in effect for the stash.  The return value is a
 read-only AV*.
 
 You are responsible for C<SvREFCNT_inc()> on the
@@ -1603,10 +1760,15 @@ semi-permanently (otherwise it might be deleted
 out from under you the next time the cache is
 invalidated).
 
-	AV*	mro_get_linear_isa(HV* stash)','name' => 'mro_get_linear_isa'},'av_store' => {'text' => 'Stores an SV in an array.  The array index is specified as C<key>.  The
+	AV*	mro_get_linear_isa(HV* stash)','name' => 'mro_get_linear_isa'},'SvPVbytex' => {'text' => 'Like C<SvPV>, but converts sv to byte representation first if necessary.
+Guarantees to evaluate sv only once; use the more efficient C<SvPVbyte>
+otherwise.
+
+	char*	SvPVbytex(SV* sv, STRLEN len)','name' => 'SvPVbytex'},'av_store' => {'text' => 'Stores an SV in an array.  The array index is specified as C<key>.  The
 return value will be NULL if the operation failed or if the value did not
 need to be actually stored within the array (as in the case of tied
-arrays). Otherwise, it can be dereferenced to get the C<SV*> that was stored
+arrays). Otherwise, it can be dereferenced
+to get the C<SV*> that was stored
 there (= C<val>)).
 
 Note that the caller is responsible for suitably incrementing the reference
@@ -1618,11 +1780,7 @@ Approximate Perl equivalent: C<$myarray[$key] = $val;>.
 See L<perlguts/"Understanding the Magic of Tied Hashes and Arrays"> for
 more information on how to use this function on tied arrays.
 
-	SV**	av_store(AV *av, I32 key, SV *val)','name' => 'av_store'},'SvPVbytex' => {'text' => 'Like C<SvPV>, but converts sv to byte representation first if necessary.
-Guarantees to evaluate sv only once; use the more efficient C<SvPVbyte>
-otherwise.
-
-	char*	SvPVbytex(SV* sv, STRLEN len)','name' => 'SvPVbytex'},'reg_named_buff_scalar' => {'text' => '','name' => 'reg_named_buff_scalar'},'unlnk' => {'text' => '','name' => 'unlnk'},'av_fetch' => {'text' => 'Returns the SV at the specified index in the array.  The C<key> is the
+	SV**	av_store(AV *av, I32 key, SV *val)','name' => 'av_store'},'reg_named_buff_scalar' => {'text' => '','name' => 'reg_named_buff_scalar'},'unlnk' => {'text' => '','name' => 'unlnk'},'av_fetch' => {'text' => 'Returns the SV at the specified index in the array.  The C<key> is the
 index.  If lval is true, you are guaranteed to get a real SV back (in case
 it wasn\'t real before), which you can then modify.  Check that the return
 value is non-null before dereferencing it to a C<SV*>.
@@ -1662,7 +1820,11 @@ The Perl equivalent for this is C<$#myarray>.
 
 	I32	av_len(AV *av)','name' => 'av_len'},'sv_unmagic' => {'text' => 'Removes all magic of type C<type> from an SV.
 
-	int	sv_unmagic(SV *const sv, const int type)','name' => 'sv_unmagic'},'SvTAINT' => {'text' => 'Taints an SV if tainting is enabled.
+	int	sv_unmagic(SV *const sv, const int type)','name' => 'sv_unmagic'},'SvTAINT' => {'text' => 'Taints an SV if tainting is enabled, and if some input to the current
+expression is tainted--usually a variable, but possibly also implicit
+inputs such as locale settings.  C<SvTAINT> propagates that taintedness to
+the outputs of an expression in a pessimistic fashion; i.e., without paying
+attention to precisely which outputs are influenced by which inputs.
 
 	void	SvTAINT(SV* sv)','name' => 'SvTAINT'},'mg_clear' => {'text' => 'Clear something magical that the SV represents.  See C<sv_magic>.
 
@@ -1670,24 +1832,27 @@ The Perl equivalent for this is C<$#myarray>.
 the length of the string written to the buffer. Only rare pre-ANSI systems
 need the wrapper function - usually this is a direct call to C<sprintf>.
 
-	int	my_sprintf(char *buffer, const char *pat, ...)','name' => 'my_sprintf'},'to_utf8_fold' => {'text' => 'Convert the UTF-8 encoded character at p to its foldcase version and
-store that in UTF-8 in ustrp and its length in bytes in lenp.  Note
-that the ustrp needs to be at least UTF8_MAXBYTES_CASE+1 bytes since the
+	int	my_sprintf(char *buffer, const char *pat, ...)','name' => 'my_sprintf'},'to_utf8_fold' => {'text' => 'Convert the UTF-8 encoded character at C<p> to its foldcase version and
+store that in UTF-8 in C<ustrp> and its length in bytes in C<lenp>.  Note
+that the C<ustrp> needs to be at least UTF8_MAXBYTES_CASE+1 bytes since the
 foldcase version may be longer than the original character (up to
 three characters).
 
 The first character of the foldcased version is returned
 (but note, as explained above, that there may be more.)
 
+The character at C<p> is assumed by this routine to be well-formed.
+
 	UV	to_utf8_fold(const U8 *p, U8* ustrp,
 		             STRLEN *lenp)','name' => 'to_utf8_fold'},'regfree_internal' => {'text' => '','name' => 'regfree_internal'},'gv_stashpv' => {'text' => 'Returns a pointer to the stash for a specified package.  Uses C<strlen> to
 determine the length of C<name>, then calls C<gv_stashpvn()>.
 
-	HV*	gv_stashpv(const char* name, I32 flags)','name' => 'gv_stashpv'},'sv_cmp_locale_flags' => {'text' => 'Compares the strings in two SVs in a locale-aware manner. Is UTF-8 and
-\'use bytes\' aware and will coerce its args to strings if necessary. If the
-flags contain SV_GMAGIC, it handles get magic. See also C<sv_cmp_flags>.
+	HV*	gv_stashpv(const char* name, I32 flags)','name' => 'gv_stashpv'},'sv_cmp_locale_flags' => {'text' => 'Compares the strings in two SVs in a locale-aware manner.  Is UTF-8 and
+\'use bytes\' aware and will coerce its args to strings if necessary.  If the
+flags contain SV_GMAGIC, it handles get magic.  See also C<sv_cmp_flags>.
 
-	I32	sv_cmp_locale_flags(SV *const sv1, SV *const sv2,
+	I32	sv_cmp_locale_flags(SV *const sv1,
+		                    SV *const sv2,
 		                    const U32 flags)','name' => 'sv_cmp_locale_flags'},'sv_vcatpvf_mg' => {'text' => 'Like C<sv_vcatpvf>, but also handles \'set\' magic.
 
 Usually used via its frontend C<sv_catpvf_mg>.
@@ -1697,7 +1862,8 @@ Usually used via its frontend C<sv_catpvf_mg>.
 		              va_list *const args)','name' => 'sv_vcatpvf_mg'},'mXPUSHu' => {'text' => 'Push an unsigned integer onto the stack, extending the stack if necessary.
 Does not use C<TARG>.  See also C<XPUSHu>, C<mPUSHu> and C<PUSHu>.
 
-	void	mXPUSHu(UV uv)','name' => 'mXPUSHu'},'hv_exists_ent' => {'text' => 'Returns a boolean indicating whether the specified hash key exists. C<hash>
+	void	mXPUSHu(UV uv)','name' => 'mXPUSHu'},'hv_exists_ent' => {'text' => 'Returns a boolean indicating whether
+the specified hash key exists.  C<hash>
 can be a valid precomputed hash value, or 0 to ask for it to be
 computed.
 
@@ -1716,7 +1882,7 @@ of the given stash, so that they might notice
 the changes in this one.
 
 Ideally, all instances of C<PL_sub_generation++> in
-perl source outside of C<mro.c> should be
+perl source outside of F<mro.c> should be
 replaced by calls to this.
 
 Perl automatically handles most of the common
@@ -1742,7 +1908,7 @@ and ocnt are not used. This call should not be used, use unpackstring instead.
 	I32	unpack_str(const char *pat, const char *patend,
 		           const char *s, const char *strbeg,
 		           const char *strend, char **new_s,
-		           I32 ocnt, U32 flags)','name' => 'unpack_str'},'my_fflush_all' => {'text' => '','name' => 'my_fflush_all'},'is_uni_print' => {'text' => '','name' => 'is_uni_print'},'sv_newref' => {'text' => 'Increment an SV\'s reference count. Use the C<SvREFCNT_inc()> wrapper
+		           I32 ocnt, U32 flags)','name' => 'unpack_str'},'my_fflush_all' => {'text' => '','name' => 'my_fflush_all'},'is_uni_print' => {'text' => '','name' => 'is_uni_print'},'sv_newref' => {'text' => 'Increment an SV\'s reference count.  Use the C<SvREFCNT_inc()> wrapper
 instead.
 
 	SV*	sv_newref(SV *const sv)','name' => 'sv_newref'},'cop_hints_fetch_pv' => {'text' => 'Like L</cop_hints_fetch_pvn>, but takes a nul-terminated string instead
@@ -1752,13 +1918,13 @@ of a string/length pair.
 		                   const char *key, U32 hash,
 		                   U32 flags)','name' => 'cop_hints_fetch_pv'},'XSRETURN_IV' => {'text' => 'Return an integer from an XSUB immediately.  Uses C<XST_mIV>.
 
-	void	XSRETURN_IV(IV iv)','name' => 'XSRETURN_IV'},'sv_uni_display' => {'text' => 'Build to the scalar dsv a displayable version of the scalar sv,
-the displayable version being at most pvlim bytes long
+	void	XSRETURN_IV(IV iv)','name' => 'XSRETURN_IV'},'sv_uni_display' => {'text' => 'Build to the scalar C<dsv> a displayable version of the scalar C<sv>,
+the displayable version being at most C<pvlim> bytes long
 (if longer, the rest is truncated and "..." will be appended).
 
-The flags argument is as in pv_uni_display().
+The C<flags> argument is as in L</pv_uni_display>().
 
-The pointer to the PV of the dsv is returned.
+The pointer to the PV of the C<dsv> is returned.
 
 	char*	sv_uni_display(SV *dsv, SV *ssv, STRLEN pvlim,
 		               UV flags)','name' => 'sv_uni_display'},'sv_unmagicext' => {'text' => 'Removes all magic of type C<type> with the specified C<vtbl> from an SV.
@@ -1774,10 +1940,11 @@ The pointer to the PV of the dsv is returned.
 
 	void	packlist(SV *cat, const char *pat,
 		         const char *patend, SV **beglist,
-		         SV **endlist)','name' => 'packlist'},'SvNV' => {'text' => 'Coerce the given SV to a double and return it. See C<SvNVx> for a version
+		         SV **endlist)','name' => 'packlist'},'SvNV' => {'text' => 'Coerce the given SV to a double and return it.  See C<SvNVx> for a version
 which guarantees to evaluate sv only once.
 
-	NV	SvNV(SV* sv)','name' => 'SvNV'},'SvUTF8' => {'text' => 'Returns a U32 value indicating whether the SV contains UTF-8 encoded data.
+	NV	SvNV(SV* sv)','name' => 'SvNV'},'SvUTF8' => {'text' => 'Returns a U32 value indicating the UTF-8 status of an SV.  If things are set-up
+properly, this indicates whether or not the SV contains UTF-8 encoded data.
 Call this after SvPV() in case any call to string overloading updates the
 internal flag.
 
@@ -1806,10 +1973,10 @@ C<call_sv> apply equally to these functions.
 	GV*	gv_fetchmethod_autoload(HV* stash,
 		                        const char* name,
 		                        I32 autoload)','name' => 'gv_fetchmethod_autoload'},'op_dump' => {'text' => '','name' => 'op_dump'},'get_mstats' => {'text' => '','name' => 'get_mstats'},'savestack_grow' => {'text' => '','name' => 'savestack_grow'},'debstackptrs' => {'text' => '','name' => 'debstackptrs'},'sv_eq' => {'text' => 'Returns a boolean indicating whether the strings in the two SVs are
-identical. Is UTF-8 and \'use bytes\' aware, handles get magic, and will
+identical.  Is UTF-8 and \'use bytes\' aware, handles get magic, and will
 coerce its args to strings if necessary.
 
-	I32	sv_eq(SV* sv1, SV* sv2)','name' => 'sv_eq'},'SvTAINTED' => {'text' => 'Checks to see if an SV is tainted. Returns TRUE if it is, FALSE if
+	I32	sv_eq(SV* sv1, SV* sv2)','name' => 'sv_eq'},'SvTAINTED' => {'text' => 'Checks to see if an SV is tainted.  Returns TRUE if it is, FALSE if
 not.
 
 	bool	SvTAINTED(SV* sv)','name' => 'SvTAINTED'},'ptr_table_store' => {'text' => '','name' => 'ptr_table_store'},'cv_undef' => {'text' => 'Clear out all the active components of a CV. This can happen either
@@ -1819,7 +1986,7 @@ children can still follow the full lexical scope chain.
 
 	void	cv_undef(CV* cv)','name' => 'cv_undef'},'StructCopy' => {'text' => 'This is an architecture-independent macro to copy one structure to another.
 
-	void	StructCopy(type src, type dest, type)','name' => 'StructCopy'},'sv_catpvf_nocontext' => {'text' => '','name' => 'sv_catpvf_nocontext'},'save_padsv_and_mortalize' => {'text' => '','name' => 'save_padsv_and_mortalize'},'cophh_delete_pvs' => {'text' => 'Like L</cophh_delete_pvn>, but takes a literal string instead of a
+	void	StructCopy(type src, type dest, type)','name' => 'StructCopy'},'sv_catpvf_nocontext' => {'text' => '','name' => 'sv_catpvf_nocontext'},'save_padsv_and_mortalize' => {'text' => '','name' => 'save_padsv_and_mortalize'},'gv_autoload_sv' => {'text' => '','name' => 'gv_autoload_sv'},'cophh_delete_pvs' => {'text' => 'Like L</cophh_delete_pvn>, but takes a literal string instead of a
 string/length pair, and no precomputed hash.
 
 NOTE: this function is experimental and may change or be
@@ -1847,7 +2014,7 @@ The value is stored in a new mortal SV.
 
 	void	XST_mPV(int pos, char* str)','name' => 'XST_mPV'},'dump_vindent' => {'text' => '','name' => 'dump_vindent'},'SvPVx' => {'text' => 'A version of C<SvPV> which guarantees to evaluate C<sv> only once.
 Only use this if C<sv> is an expression with side effects, otherwise use the
-more efficient C<SvPVX>.
+more efficient C<SvPV>.
 
 	char*	SvPVx(SV* sv, STRLEN len)','name' => 'SvPVx'},'dump_form' => {'text' => '','name' => 'dump_form'},'sv_grow' => {'text' => 'Expands the character buffer in the SV.  If necessary, uses C<sv_unref> and
 upgrades the SV to C<SVt_PV>.  Returns a pointer to the character buffer.
@@ -1883,7 +2050,18 @@ magic. See C<sv_usepvn_flags>.
 
 	void	sv_usepvn(SV* sv, char* ptr, STRLEN len)','name' => 'sv_usepvn'},'SvREFCNT' => {'text' => 'Returns the value of the object\'s reference count.
 
-	U32	SvREFCNT(SV* sv)','name' => 'SvREFCNT'},'swash_init' => {'text' => '','name' => 'swash_init'},'newANONSUB' => {'text' => '','name' => 'newANONSUB'},'warn' => {'text' => 'This is an XS interface to Perl\'s C<warn> function.
+	U32	SvREFCNT(SV* sv)','name' => 'SvREFCNT'},'newCONSTSUB_flags' => {'text' => 'Creates a constant sub equivalent to Perl C<sub FOO () { 123 }> which is
+eligible for inlining at compile-time.
+
+Currently, the only useful value for C<flags> is SVf_UTF8.
+
+Passing NULL for SV creates a constant sub equivalent to C<sub BAR () {}>,
+which won\'t be called if used as a destructor, but will suppress the overhead
+of a call to C<AUTOLOAD>.  (This form, however, isn\'t eligible for inlining at
+compile time.)
+
+	CV*	newCONSTSUB_flags(HV* stash, const char* name,
+		                  STRLEN len, U32 flags, SV* sv)','name' => 'newCONSTSUB_flags'},'swash_init' => {'text' => '','name' => 'swash_init'},'newANONSUB' => {'text' => '','name' => 'newANONSUB'},'warn' => {'text' => 'This is an XS interface to Perl\'s C<warn> function.
 
 Take a sprintf-style format pattern and argument list.  These are used to
 generate a string message.  If the message does not end with a newline,
@@ -1908,8 +2086,9 @@ XSUBs don\'t have CvPADLIST set - dXSTARG fetches values from PL_curpad,
 but that is really the callers pad (a slot of which is allocated by
 every entersub).
 
-The CvPADLIST AV has does not have AvREAL set, so REFCNT of component items
-is managed "manual" (mostly in pad.c) rather than normal av.c rules.
+The CvPADLIST AV has the REFCNT of its component items managed "manually"
+(mostly in pad.c) rather than by normal av.c rules.  So we turn off AvREAL
+just before freeing it, to let av.c know not to touch the entries.
 The items in the AV are not SVs as for a normal AV, but other AVs:
 
 0\'th Entry of the CvPADLIST is an AV which represents the "names" or rather
@@ -1978,7 +2157,9 @@ For state vars, SVs_PADSTALE is overloaded to mean \'not yet initialised\'
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	PADLIST * CvPADLIST(CV *cv)','name' => 'CvPADLIST'},'sv_catpvf_mg_nocontext' => {'text' => '','name' => 'sv_catpvf_mg_nocontext'},'reg_named_buff_all' => {'text' => '','name' => 'reg_named_buff_all'},'PerlIO_close' => {'text' => '','name' => 'PerlIO_close'},'EXTEND' => {'text' => 'Used to extend the argument stack for an XSUB\'s return values. Once
+	PADLIST * CvPADLIST(CV *cv)','name' => 'CvPADLIST'},'HvNAMEUTF8' => {'text' => 'Returns true if the name is in UTF8 encoding.
+
+	unsigned char HvNAMEUTF8(HV *stash)','name' => 'HvNAMEUTF8'},'sv_catpvf_mg_nocontext' => {'text' => '','name' => 'sv_catpvf_mg_nocontext'},'reg_named_buff_all' => {'text' => '','name' => 'reg_named_buff_all'},'PerlIO_close' => {'text' => '','name' => 'PerlIO_close'},'EXTEND' => {'text' => 'Used to extend the argument stack for an XSUB\'s return values. Once
 used, guarantees that there is room for at least C<nitems> to be pushed
 onto the stack.
 
@@ -1990,24 +2171,22 @@ of C<op_private>.
 	OP *	newOP(I32 type, I32 flags)','name' => 'newOP'},'newSVuv' => {'text' => 'Creates a new SV and copies an unsigned integer into it.
 The reference count for the SV is set to 1.
 
-	SV*	newSVuv(const UV u)','name' => 'newSVuv'},'gv_fetchmeth' => {'text' => 'Returns the glob with the given C<name> and a defined subroutine or
-C<NULL>.  The glob lives in the given C<stash>, or in the stashes
-accessible via @ISA and UNIVERSAL::.
-
-The argument C<level> should be either 0 or -1.  If C<level==0>, as a
-side-effect creates a glob with the given C<name> in the given C<stash>
-which in the case of success contains an alias for the subroutine, and sets
-up caching info for this glob.
-
-This function grants C<"SUPER"> token as a postfix of the stash name. The
-GV returned from C<gv_fetchmeth> may be a method cache entry, which is not
-visible to Perl code.  So when calling C<call_sv>, you should not use
-the GV directly; instead, you should use the method\'s CV, which can be
-obtained from the GV with the C<GvCV> macro.
+	SV*	newSVuv(const UV u)','name' => 'newSVuv'},'gv_fetchmeth' => {'text' => 'Like L</gv_fetchmeth_pvn>, but lacks a flags parameter.
 
 	GV*	gv_fetchmeth(HV* stash, const char* name,
-		             STRLEN len, I32 level)','name' => 'gv_fetchmeth'},'op_refcnt_lock' => {'text' => '','name' => 'op_refcnt_lock'},'newGVgen' => {'text' => '','name' => 'newGVgen'},'sv_does' => {'text' => 'Returns a boolean indicating whether the SV performs a specific, named role.
-The SV can be a Perl object or the name of a Perl class.
+		             STRLEN len, I32 level)','name' => 'gv_fetchmeth'},'op_refcnt_lock' => {'text' => '','name' => 'op_refcnt_lock'},'gv_fetchmeth_pvn_autoload' => {'text' => 'Same as gv_fetchmeth_pvn(), but looks for autoloaded subroutines too.
+Returns a glob for the subroutine.
+
+For an autoloaded subroutine without a GV, will create a GV even
+if C<level < 0>.  For an autoloaded subroutine without a stub, GvCV()
+of the result may be zero.
+
+Currently, the only significant value for C<flags> is SVf_UTF8.
+
+	GV*	gv_fetchmeth_pvn_autoload(HV* stash,
+		                          const char* name,
+		                          STRLEN len, I32 level,
+		                          U32 flags)','name' => 'gv_fetchmeth_pvn_autoload'},'newGVgen' => {'text' => '','name' => 'newGVgen'},'sv_does' => {'text' => 'Like L</sv_does_pv>, but doesn\'t take a C<flags> parameter.
 
 	bool	sv_does(SV* sv, const char *const name)','name' => 'sv_does'},'delimcpy' => {'text' => '','name' => 'delimcpy'},'newLOOPOP' => {'text' => 'Constructs, checks, and returns an op tree expressing a loop.  This is
 only a loop in the control flow through the op tree; it does not have
@@ -2038,19 +2217,19 @@ The C<flags> value will normally be zero; if HV_ITERNEXT_WANTPLACEHOLDERS is
 set the placeholders keys (for restricted hashes) will be returned in addition
 to normal keys. By default placeholders are automatically skipped over.
 Currently a placeholder is implemented with a value that is
-C<&Perl_sv_placeholder>. Note that the implementation of placeholders and
+C<&PL_sv_placeholder>.  Note that the implementation of placeholders and
 restricted hashes may change, and the implementation currently is
 insufficiently abstracted for any change to be tidy.
 
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	HE*	hv_iternext_flags(HV *hv, I32 flags)','name' => 'hv_iternext_flags'},'is_utf8_string_loclen' => {'text' => 'Like is_utf8_string() but stores the location of the failure (in the
-case of "utf8ness failure") or the location s+len (in the case of
+	HE*	hv_iternext_flags(HV *hv, I32 flags)','name' => 'hv_iternext_flags'},'is_utf8_string_loclen' => {'text' => 'Like L</is_utf8_string>() but stores the location of the failure (in the
+case of "utf8ness failure") or the location C<s>+C<len> (in the case of
 "utf8ness success") in the C<ep>, and the number of UTF-8
 encoded characters in the C<el>.
 
-See also is_utf8_string_loc() and is_utf8_string().
+See also L</is_utf8_string_loc>() and L</is_utf8_string>().
 
 	bool	is_utf8_string_loclen(const U8 *s, STRLEN len,
 		                      const U8 **ep, STRLEN *el)','name' => 'is_utf8_string_loclen'},'call_method' => {'text' => 'Performs a callback to the specified Perl method.  The blessed object must
@@ -2070,8 +2249,11 @@ removed without notice.
 
 	int	perl_parse(PerlInterpreter *my_perl,
 		           XSINIT_t xsinit, int argc,
-		           char** argv, char** env)','name' => 'perl_parse'},'av_clear' => {'text' => 'Clears an array, making it empty.  Does not free the memory used by the
-array itself. Perl equivalent: C<@myarray = ();>.
+		           char** argv, char** env)','name' => 'perl_parse'},'av_clear' => {'text' => 'Clears an array, making it empty.  Does not free the memory the av uses to
+store its list of scalars.  If any destructors are triggered as a result,
+the av itself may be freed when this function returns.
+
+Perl equivalent: C<@myarray = ();>.
 
 	void	av_clear(AV *av)','name' => 'av_clear'},'sv_force_normal' => {'text' => 'Undo various types of fakery on an SV: if the PV is a shared string, make
 a private copy; if we\'re a ref, stop refing; if we\'re a glob, downgrade to
@@ -2088,7 +2270,7 @@ is not NULL.  Since we don\'t have to check the NULLness, it\'s faster
 and smaller.
 
 	SV*	SvREFCNT_inc_NN(SV* sv)','name' => 'SvREFCNT_inc_NN'},'sys_term' => {'text' => '','name' => 'sys_term'},'is_utf8_xidfirst' => {'text' => '','name' => 'is_utf8_xidfirst'},'re_intuit_start' => {'text' => '','name' => 're_intuit_start'},'SvUVX' => {'text' => 'Returns the raw value in the SV\'s UV slot, without checks or conversions.
-Only use when you are sure SvIOK is true. See also C<SvUV()>.
+Only use when you are sure SvIOK is true.  See also C<SvUV()>.
 
 	UV	SvUVX(SV* sv)','name' => 'SvUVX'},'hv_copy_hints_hv' => {'text' => 'A specialised version of L</newHVhv> for copying C<%^H>.  I<ohv> must be
 a pointer to a hash (which may have C<%^H> magic, but should be generally
@@ -2098,7 +2280,7 @@ added to it.  A pointer to the new hash is returned.
 
 	HV *	hv_copy_hints_hv(HV *ohv)','name' => 'hv_copy_hints_hv'},'do_pmop_dump' => {'text' => '','name' => 'do_pmop_dump'},'sv_utf8_decode' => {'text' => 'If the PV of the SV is an octet sequence in UTF-8
 and contains a multiple-byte character, the C<SvUTF8> flag is turned on
-so that it looks like a character. If the PV contains only single-byte
+so that it looks like a character.  If the PV contains only single-byte
 characters, the C<SvUTF8> flag stays off.
 Scans PV for validity and returns false if the PV is invalid UTF-8.
 
@@ -2119,11 +2301,11 @@ NOTE: the perl_ form of this function is deprecated.
 	NV	SvNV_nomg(SV* sv)','name' => 'SvNV_nomg'},'FREETMPS' => {'text' => 'Closing bracket for temporaries on a callback.  See C<SAVETMPS> and
 L<perlcall>.
 
-		FREETMPS;','name' => 'FREETMPS'},'sv_utf8_upgrade_nomg' => {'text' => 'Like sv_utf8_upgrade, but doesn\'t do magic on C<sv>
+		FREETMPS;','name' => 'FREETMPS'},'sv_utf8_upgrade_nomg' => {'text' => 'Like sv_utf8_upgrade, but doesn\'t do magic on C<sv>.
 
 	STRLEN	sv_utf8_upgrade_nomg(SV *sv)','name' => 'sv_utf8_upgrade_nomg'},'sv_pvn_force' => {'text' => 'Get a sensible string out of the SV somehow.
 A private implementation of the C<SvPV_force> macro for compilers which
-can\'t cope with complex macro expressions. Always use the macro instead.
+can\'t cope with complex macro expressions.  Always use the macro instead.
 
 	char*	sv_pvn_force(SV* sv, STRLEN* lp)','name' => 'sv_pvn_force'},'GIMME' => {'text' => 'A backward-compatible version of C<GIMME_V> which can only return
 C<G_SCALAR> or C<G_ARRAY>; in a void context, it returns C<G_SCALAR>.
@@ -2160,7 +2342,7 @@ will be interpreted DWIMically, often as a comparison against C<$_>,
 and may be null to generate a C<default> block.
 
 	OP *	newWHENOP(OP *cond, OP *block)','name' => 'newWHENOP'},'sv_dec' => {'text' => 'Auto-decrement of the value in the SV, doing string to numeric conversion
-if necessary. Handles \'get\' magic and operator overloading.
+if necessary.  Handles \'get\' magic and operator overloading.
 
 	void	sv_dec(SV *const sv)','name' => 'sv_dec'},'pv_display' => {'text' => 'Similar to
 
@@ -2178,7 +2360,7 @@ May cause the SV to be downgraded from UTF-8 as a side-effect.
 Usually accessed via the C<SvPVbyte_nolen> macro.
 
 	char*	sv_2pvbyte_nolen(SV* sv)','name' => 'sv_2pvbyte_nolen'},'is_uni_space' => {'text' => '','name' => 'is_uni_space'},'PerlIO_fileno' => {'text' => '','name' => 'PerlIO_fileno'},'uvchr_to_utf8' => {'text' => 'Adds the UTF-8 representation of the Native code point C<uv> to the end
-of the string C<d>; C<d> should be have at least C<UTF8_MAXBYTES+1> free
+of the string C<d>; C<d> should have at least C<UTF8_MAXBYTES+1> free
 bytes available. The return value is the pointer to the byte after the
 end of the new character. In other words,
 
@@ -2192,13 +2374,7 @@ is the recommended wide native character-aware way of saying
 digit in the platform\'s native character set.
 Variants C<isDIGIT_A> and C<isDIGIT_L1> are identical to C<isDIGIT>.
 
-	bool	isDIGIT(char ch)','name' => 'isDIGIT'},'call_atexit' => {'text' => '','name' => 'call_atexit'},'is_utf8_alpha' => {'text' => '','name' => 'is_utf8_alpha'},'my_bzero' => {'text' => '','name' => 'my_bzero'},'newCONSTSUB' => {'text' => 'Creates a constant sub equivalent to Perl C<sub FOO () { 123 }> which is
-eligible for inlining at compile-time.
-
-Passing NULL for SV creates a constant sub equivalent to C<sub BAR () {}>,
-which won\'t be called if used as a destructor, but will suppress the overhead
-of a call to C<AUTOLOAD>.  (This form, however, isn\'t eligible for inlining at
-compile time.)
+	bool	isDIGIT(char ch)','name' => 'isDIGIT'},'call_atexit' => {'text' => '','name' => 'call_atexit'},'is_utf8_alpha' => {'text' => '','name' => 'is_utf8_alpha'},'my_bzero' => {'text' => '','name' => 'my_bzero'},'newCONSTSUB' => {'text' => 'See L</newCONSTSUB_flags>.
 
 	CV*	newCONSTSUB(HV* stash, const char* name, SV* sv)','name' => 'newCONSTSUB'},'SvSHARE' => {'text' => 'Arranges for sv to be shared between threads if a suitable module
 has been loaded.
@@ -2256,33 +2432,40 @@ removed without notice.
 	char*	SvPVbyte(SV* sv, STRLEN len)','name' => 'SvPVbyte'},'is_uni_lower' => {'text' => '','name' => 'is_uni_lower'},'savesharedpvs' => {'text' => 'A version of C<savepvs()> which allocates the duplicate string in memory
 which is shared between threads.
 
-	char*	savesharedpvs(const char* s)','name' => 'savesharedpvs'},'sys_init3' => {'text' => '','name' => 'sys_init3'},'PerlIO_stdout' => {'text' => '','name' => 'PerlIO_stdout'},'SAVETMPS' => {'text' => 'Opening bracket for temporaries on a callback.  See C<FREETMPS> and
+	char*	savesharedpvs(const char* s)','name' => 'savesharedpvs'},'sys_init3' => {'text' => '','name' => 'sys_init3'},'gv_fetchmeth_pv' => {'text' => 'Exactly like L</gv_fetchmeth_pvn>, but takes a nul-terminated string 
+instead of a string/length pair.
+
+	GV*	gv_fetchmeth_pv(HV* stash, const char* name,
+		                I32 level, U32 flags)','name' => 'gv_fetchmeth_pv'},'PerlIO_stdout' => {'text' => '','name' => 'PerlIO_stdout'},'XS_INTERNAL' => {'text' => 'Macro to declare an XSUB and its C parameter list without exporting the symbols.
+This is handled by C<xsubpp> and generally preferable over exporting the XSUB
+symbols unnecessarily.','name' => 'XS_INTERNAL'},'SAVETMPS' => {'text' => 'Opening bracket for temporaries on a callback.  See C<FREETMPS> and
 L<perlcall>.
 
 		SAVETMPS;','name' => 'SAVETMPS'},'AvFILL' => {'text' => 'Same as C<av_len()>.  Deprecated, use C<av_len()> instead.
 
-	int	AvFILL(AV* av)','name' => 'AvFILL'},'ORIGMARK' => {'text' => 'The original stack mark for the XSUB.  See C<dORIGMARK>.','name' => 'ORIGMARK'},'SvPVutf8x' => {'text' => 'Like C<SvPV>, but converts sv to utf8 first if necessary.
+	int	AvFILL(AV* av)','name' => 'AvFILL'},'SvPVutf8x' => {'text' => 'Like C<SvPV>, but converts sv to utf8 first if necessary.
 Guarantees to evaluate sv only once; use the more efficient C<SvPVutf8>
 otherwise.
 
-	char*	SvPVutf8x(SV* sv, STRLEN len)','name' => 'SvPVutf8x'},'sv_2cv' => {'text' => 'Using various gambits, try to get a CV from an SV; in addition, try if
+	char*	SvPVutf8x(SV* sv, STRLEN len)','name' => 'SvPVutf8x'},'ORIGMARK' => {'text' => 'The original stack mark for the XSUB.  See C<dORIGMARK>.','name' => 'ORIGMARK'},'sv_2cv' => {'text' => 'Using various gambits, try to get a CV from an SV; in addition, try if
 possible to set C<*st> and C<*gvp> to the stash and GV associated with it.
 The flags in C<lref> are passed to gv_fetchsv.
 
 	CV*	sv_2cv(SV* sv, HV **const st, GV **const gvp,
 		       const I32 lref)','name' => 'sv_2cv'},'gp_free' => {'text' => '','name' => 'gp_free'},'SvPV_force_nomg' => {'text' => 'Like C<SvPV> but will force the SV into containing just a string
 (C<SvPOK_only>).  You want force if you are going to update the C<SvPVX>
-directly. Doesn\'t process magic.
+directly.  Doesn\'t process magic.
 
 	char*	SvPV_force_nomg(SV* sv, STRLEN len)','name' => 'SvPV_force_nomg'},'SvPOK_only' => {'text' => 'Tells an SV that it is a string and disables all other OK bits.
 Will also turn off the UTF-8 status.
 
 	void	SvPOK_only(SV* sv)','name' => 'SvPOK_only'},'save_destructor_x' => {'text' => '','name' => 'save_destructor_x'},'sv_usepvn_mg' => {'text' => 'Like C<sv_usepvn>, but also handles \'set\' magic.
 
-	void	sv_usepvn_mg(SV *sv, char *ptr, STRLEN len)','name' => 'sv_usepvn_mg'},'hv_fetch' => {'text' => 'Returns the SV which corresponds to the specified key in the hash.  The
-C<klen> is the length of the key.  If C<lval> is set then the fetch will be
-part of a store.  Check that the return value is non-null before
-dereferencing it to an C<SV*>.
+	void	sv_usepvn_mg(SV *sv, char *ptr, STRLEN len)','name' => 'sv_usepvn_mg'},'hv_fetch' => {'text' => 'Returns the SV which corresponds to the specified key in the hash.
+The absolute value of C<klen> is the length of the key.  If C<klen> is
+negative the key is assumed to be in UTF-8-encoded Unicode.  If
+C<lval> is set then the fetch will be part of a store.  Check that the
+return value is non-null before dereferencing it to an C<SV*>.
 
 See L<perlguts/"Understanding the Magic of Tied Hashes and Arrays"> for more
 information on how to use this function on tied hashes.
@@ -2308,7 +2491,7 @@ See C<SvROK_off>.
 		        I32 klen)','name' => 'mg_copy'},'save_I16' => {'text' => '','name' => 'save_I16'},'sv_rvweaken' => {'text' => 'Weaken a reference: set the C<SvWEAKREF> flag on this RV; give the
 referred-to SV C<PERL_MAGIC_backref> magic if it hasn\'t already; and
 push a back-reference to this RV onto the array of backreferences
-associated with that magic. If the RV is magical, set magic will be
+associated with that magic.  If the RV is magical, set magic will be
 called after the RV is cleared.
 
 	SV*	sv_rvweaken(SV *const sv)','name' => 'sv_rvweaken'},'grok_oct' => {'text' => 'converts a string representing an octal number to numeric form.
@@ -2331,10 +2514,12 @@ If C<PERL_SCAN_ALLOW_UNDERSCORES> is set in I<*flags> then the octal
 number may use \'_\' characters to separate digits.
 
 	UV	grok_oct(const char* start, STRLEN* len_p,
-		         I32* flags, NV *result)','name' => 'grok_oct'},'MARK' => {'text' => 'Stack marker variable for the XSUB.  See C<dMARK>.','name' => 'MARK'},'newSVpvn' => {'text' => 'Creates a new SV and copies a string into it.  The reference count for the
-SV is set to 1.  Note that if C<len> is zero, Perl will create a zero length
-string.  You are responsible for ensuring that the source string is at least
-C<len> bytes long.  If the C<s> argument is NULL the new SV will be undefined.
+		         I32* flags, NV *result)','name' => 'grok_oct'},'MARK' => {'text' => 'Stack marker variable for the XSUB.  See C<dMARK>.','name' => 'MARK'},'newSVpvn' => {'text' => 'Creates a new SV and copies a buffer into it, which may contain NUL characters
+(C<\\0>) and other binary data.  The reference count for the SV is set to 1.
+Note that if C<len> is zero, Perl will create a zero length (Perl) string.  You
+are responsible for ensuring that the source buffer is at least
+C<len> bytes long.  If the C<buffer> argument is NULL the new SV will be
+undefined.
 
 	SV*	newSVpvn(const char *const s, const STRLEN len)','name' => 'newSVpvn'},'scan_hex' => {'text' => 'For backwards compatibility. Use C<grok_hex> instead.
 
@@ -2343,9 +2528,9 @@ C<len> bytes long.  If the C<s> argument is NULL the new SV will be undefined.
 extracted list items on the stack and returns the number of elements.
 Issue C<PUTBACK> before and C<SPAGAIN> after the call to this function.
 
-	I32	unpackstring(const char *pat, const char *patend,
-		             const char *s, const char *strend,
-		             U32 flags)','name' => 'unpackstring'},'av_extend' => {'text' => 'Pre-extend an array.  The C<key> is the index to which the array should be
+	I32	unpackstring(const char *pat,
+		             const char *patend, const char *s,
+		             const char *strend, U32 flags)','name' => 'unpackstring'},'av_extend' => {'text' => 'Pre-extend an array.  The C<key> is the index to which the array should be
 extended.
 
 	void	av_extend(AV *av, I32 key)','name' => 'av_extend'},'sv_peek' => {'text' => '','name' => 'sv_peek'},'hv_iternext' => {'text' => 'Returns entries from a hash iterator.  See C<hv_iterinit>.
@@ -2397,13 +2582,13 @@ Uses a single private buffer so if you want to format several strings you
 must explicitly copy the earlier strings away (and free the copies when you
 are done).
 
-	char*	form(const char* pat, ...)','name' => 'form'},'instr' => {'text' => '','name' => 'instr'},'pregexec' => {'text' => '','name' => 'pregexec'},'is_utf8_string' => {'text' => 'Returns true if first C<len> bytes of the given string form a valid
+	char*	form(const char* pat, ...)','name' => 'form'},'instr' => {'text' => '','name' => 'instr'},'pregexec' => {'text' => '','name' => 'pregexec'},'is_utf8_string' => {'text' => 'Returns true if the first C<len> bytes of string C<s> form a valid
 UTF-8 string, false otherwise.  If C<len> is 0, it will be calculated
-using C<strlen(s)>.  Note that \'a valid UTF-8 string\' does not mean \'a
-string that contains code points above 0x7F encoded in UTF-8\' because a
-valid ASCII string is a valid UTF-8 string.
+using C<strlen(s)> (which means if you use this option, that C<s> has to have a
+terminating NUL byte).  Note that all characters being ASCII constitute \'a
+valid UTF-8 string\'.
 
-See also is_ascii_string(), is_utf8_string_loclen(), and is_utf8_string_loc().
+See also L</is_ascii_string>(), L</is_utf8_string_loclen>(), and L</is_utf8_string_loc>().
 
 	bool	is_utf8_string(const U8 *s, STRLEN len)','name' => 'is_utf8_string'},'croak_xs_usage' => {'text' => 'A specialised variant of C<croak()> for emitting the usage message for xsubs
 
@@ -2412,11 +2597,11 @@ See also is_ascii_string(), is_utf8_string_loclen(), and is_utf8_string_loc().
 works out the package name and subroutine name from C<cv>, and then calls
 C<croak()>. Hence if C<cv> is C<&ouch::awk>, it would call C<croak> as:
 
-    Perl_croak(aTHX_ "Usage: %s::%s(%s)", "ouch" "awk", "eee_yow");
+    Perl_croak(aTHX_ "Usage: %"SVf"::%"SVf"(%s)", "ouch" "awk", "eee_yow");
 
 	void	croak_xs_usage(const CV *const cv,
-		               const char *const params)','name' => 'croak_xs_usage'},'sv_insert' => {'text' => 'Inserts a string at the specified offset/length within the SV. Similar to
-the Perl substr() function. Handles get magic.
+		               const char *const params)','name' => 'croak_xs_usage'},'sv_insert' => {'text' => 'Inserts a string at the specified offset/length within the SV.  Similar to
+the Perl substr() function.  Handles get magic.
 
 	void	sv_insert(SV *const bigstr, const STRLEN offset,
 		          const STRLEN len,
@@ -2430,7 +2615,7 @@ sharing module present.  It ignores its single SV argument, and returns
 could potentially warn under some level of strict-ness.
 
 	bool	sv_destroyable(SV *sv)','name' => 'sv_destroyable'},'save_aelem_flags' => {'text' => '','name' => 'save_aelem_flags'},'XS' => {'text' => 'Macro to declare an XSUB and its C parameter list.  This is handled by
-C<xsubpp>.','name' => 'XS'},'gv_check' => {'text' => '','name' => 'gv_check'},'sv_setpvn' => {'text' => 'Copies a string into an SV.  The C<len> parameter indicates the number of
+C<xsubpp>. It is the same as using the more explicit XS_EXTERNAL macro.','name' => 'XS'},'gv_check' => {'text' => '','name' => 'gv_check'},'sv_setpvn' => {'text' => 'Copies a string into an SV.  The C<len> parameter indicates the number of
 bytes to be copied.  If the C<ptr> argument is NULL the SV will become
 undefined.  Does not handle \'set\' magic.  See C<sv_setpvn_mg>.
 
@@ -2453,7 +2638,8 @@ C<strncmp>).
 	bool	strnEQ(char* s1, char* s2, STRLEN len)','name' => 'strnEQ'},'stashpv_hvname_match' => {'text' => '','name' => 'stashpv_hvname_match'},'sv_dup_inc' => {'text' => '','name' => 'sv_dup_inc'},'newMYSUB' => {'text' => '','name' => 'newMYSUB'},'PoisonWith' => {'text' => 'Fill up memory with a byte pattern (a byte repeated over and over
 again) that hopefully catches attempts to access uninitialized memory.
 
-	void	PoisonWith(void* dest, int nitems, type, U8 byte)','name' => 'PoisonWith'},'av_create_and_unshift_one' => {'text' => 'Unshifts an SV onto the beginning of the array, creating the array if
+	void	PoisonWith(void* dest, int nitems, type,
+		           U8 byte)','name' => 'PoisonWith'},'av_create_and_unshift_one' => {'text' => 'Unshifts an SV onto the beginning of the array, creating the array if
 necessary.
 A small internal helper function to remove a commonly duplicated idiom.
 
@@ -2463,8 +2649,8 @@ removed without notice.
 	SV**	av_create_and_unshift_one(AV **const avp,
 		                          SV *const val)','name' => 'av_create_and_unshift_one'},'SvNIOK_off' => {'text' => 'Unsets the NV/IV status of an SV.
 
-	void	SvNIOK_off(SV* sv)','name' => 'SvNIOK_off'},'bytes_cmp_utf8' => {'text' => 'Compares the sequence of characters (stored as octets) in b, blen with the
-sequence of characters (stored as UTF-8) in u, ulen. Returns 0 if they are
+	void	SvNIOK_off(SV* sv)','name' => 'SvNIOK_off'},'bytes_cmp_utf8' => {'text' => 'Compares the sequence of characters (stored as octets) in C<b>, C<blen> with the
+sequence of characters (stored as UTF-8) in C<u>, C<ulen>. Returns 0 if they are
 equal, -1 or -2 if the first string is less than the second string, +1 or +2
 if the first string is greater than the second string.
 
@@ -2476,8 +2662,9 @@ within the strings.
 		               const U8 *u, STRLEN ulen)','name' => 'bytes_cmp_utf8'},'seed' => {'text' => '','name' => 'seed'},'pad_findmy_pvs' => {'text' => 'Exactly like L</pad_findmy_pvn>, but takes a literal string instead
 of a string/length pair.
 
-	PADOFFSET pad_findmy_pvs(const char *name, U32 flags)','name' => 'pad_findmy_pvs'},'is_uni_lower_lc' => {'text' => '','name' => 'is_uni_lower_lc'},'sv_magic' => {'text' => 'Adds magic to an SV. First upgrades C<sv> to type C<SVt_PVMG> if necessary,
-then adds a new magic item of type C<how> to the head of the magic list.
+	PADOFFSET pad_findmy_pvs(const char *name, U32 flags)','name' => 'pad_findmy_pvs'},'is_uni_lower_lc' => {'text' => '','name' => 'is_uni_lower_lc'},'sv_magic' => {'text' => 'Adds magic to an SV.  First upgrades C<sv> to type C<SVt_PVMG> if
+necessary, then adds a new magic item of type C<how> to the head of the
+magic list.
 
 See C<sv_magicext> (which C<sv_magic> now calls) for a description of the
 handling of the C<name> and C<namlen> arguments.
@@ -2490,7 +2677,8 @@ to add more than one instance of the same \'how\'.
 		         const I32 namlen)','name' => 'sv_magic'},'sv_utf8_upgrade_flags' => {'text' => 'Converts the PV of an SV to its UTF-8-encoded form.
 Forces the SV to string form if it is not already.
 Always sets the SvUTF8 flag to avoid future validity checks even
-if all the bytes are invariant in UTF-8. If C<flags> has C<SV_GMAGIC> bit set,
+if all the bytes are invariant in UTF-8.
+If C<flags> has C<SV_GMAGIC> bit set,
 will C<mg_get> on C<sv> if appropriate, else not.
 Returns the number of bytes in the converted string
 C<sv_utf8_upgrade> and
@@ -2568,7 +2756,8 @@ frame for the sub call itself.
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	COPHH *	cophh_copy(COPHH *cophh)','name' => 'cophh_copy'},'sv_pvutf8n_force' => {'text' => 'The backend for the C<SvPVutf8x_force> macro. Always use the macro instead.
+	COPHH *	cophh_copy(COPHH *cophh)','name' => 'cophh_copy'},'sv_pvutf8n_force' => {'text' => 'The backend for the C<SvPVutf8x_force> macro.  Always use the macro
+instead.
 
 	char*	sv_pvutf8n_force(SV *const sv, STRLEN *const lp)','name' => 'sv_pvutf8n_force'},'do_sv_dump' => {'text' => '','name' => 'do_sv_dump'},'SvNV_set' => {'text' => 'Set the value of the NV pointer in sv to val.  See C<SvIV_set>.
 
@@ -2581,7 +2770,7 @@ The function never actually returns.
 Perl equivalent: C<my @array;>.
 
 	AV*	newAV()','name' => 'newAV'},'bytes_from_utf8' => {'text' => 'Converts a string C<s> of length C<len> from UTF-8 into native byte encoding.
-Unlike C<utf8_to_bytes> but like C<bytes_to_utf8>, returns a pointer to
+Unlike L</utf8_to_bytes> but like L</bytes_to_utf8>, returns a pointer to
 the newly-created string, and updates C<len> to contain the new
 length.  Returns the original string if no conversion occurs, C<len>
 is unchanged. Do nothing if C<is_utf8> points to 0. Sets C<is_utf8> to
@@ -2627,7 +2816,8 @@ removed without notice.
 		                STRLEN keylen, U32 hash,
 		                SV *value, U32 flags)','name' => 'cophh_store_pvn'},'perl_run' => {'text' => 'Tells a Perl interpreter to run.  See L<perlembed>.
 
-	int	perl_run(PerlInterpreter *my_perl)','name' => 'perl_run'},'mess_nocontext' => {'text' => '','name' => 'mess_nocontext'},'sv_insert_flags' => {'text' => 'Same as C<sv_insert>, but the extra C<flags> are passed the C<SvPV_force_flags> that applies to C<bigstr>.
+	int	perl_run(PerlInterpreter *my_perl)','name' => 'perl_run'},'mess_nocontext' => {'text' => '','name' => 'mess_nocontext'},'sv_insert_flags' => {'text' => 'Same as C<sv_insert>, but the extra C<flags> are passed to the
+C<SvPV_force_flags> that applies to C<bigstr>.
 
 	void	sv_insert_flags(SV *const bigstr,
 		                const STRLEN offset,
@@ -2657,7 +2847,8 @@ Use the C<SvTRUE> macro instead, which may call C<sv_true()> or may
 instead use an in-line version.
 
 	I32	sv_true(SV *const sv)','name' => 'sv_true'},'save_aptr' => {'text' => '','name' => 'save_aptr'},'hv_exists' => {'text' => 'Returns a boolean indicating whether the specified hash key exists.  The
-C<klen> is the length of the key.
+absolute value of C<klen> is the length of the key.  If C<klen> is
+negative the key is assumed to be in UTF-8-encoded Unicode.
 
 	bool	hv_exists(HV *hv, const char *key, I32 klen)','name' => 'hv_exists'},'my_popen' => {'text' => '','name' => 'my_popen'},'mg_length' => {'text' => 'Report on the SV\'s length.  See C<sv_magic>.
 
@@ -2728,13 +2919,13 @@ to its length.  May cause the SV to be upgraded to UTF-8 as a side-effect.
 
 Usually accessed via the C<SvPVutf8> macro.
 
-	char*	sv_2pvutf8(SV *const sv, STRLEN *const lp)','name' => 'sv_2pvutf8'},'dITEMS' => {'text' => 'Sets up the C<items> variable.
+	char*	sv_2pvutf8(SV *sv, STRLEN *const lp)','name' => 'sv_2pvutf8'},'dITEMS' => {'text' => 'Sets up the C<items> variable.
 This is usually handled automatically by C<xsubpp> by calling C<dXSARGS>.
 
 		dITEMS;','name' => 'dITEMS'},'save_scalar' => {'text' => '','name' => 'save_scalar'},'newSUB' => {'text' => '','name' => 'newSUB'},'pad_findmy_pv' => {'text' => 'Exactly like L</pad_findmy_pvn>, but takes a nul-terminated string
 instead of a string/length pair.
 
-	PADOFFSET pad_findmy_pv(const char *name, U32 flags)','name' => 'pad_findmy_pv'},'despatch_signals' => {'text' => '','name' => 'despatch_signals'},'PUTBACK' => {'text' => 'Closing bracket for XSUB arguments.  This is usually handled by C<xsubpp>.
+	PADOFFSET pad_findmy_pv(const char *name, U32 flags)','name' => 'pad_findmy_pv'},'whichsig_sv' => {'text' => '','name' => 'whichsig_sv'},'despatch_signals' => {'text' => '','name' => 'despatch_signals'},'PUTBACK' => {'text' => 'Closing bracket for XSUB arguments.  This is usually handled by C<xsubpp>.
 See C<PUSHMARK> and L<perlcall> for other uses.
 
 		PUTBACK;','name' => 'PUTBACK'},'dAXMARK' => {'text' => 'Sets up the C<ax> variable and stack marker variable C<mark>.
@@ -2753,8 +2944,8 @@ flags can be OR\'ed together:
     padnew_SAVE		save old globals on the save stack
     padnew_SAVESUB	also save extra stuff for start of sub
 
-	PADLIST * pad_new(int flags)','name' => 'pad_new'},'SvTAINTED_off' => {'text' => 'Untaints an SV. Be I<very> careful with this routine, as it short-circuits
-some of Perl\'s fundamental security features. XS module authors should not
+	PADLIST * pad_new(int flags)','name' => 'pad_new'},'SvTAINTED_off' => {'text' => 'Untaints an SV.  Be I<very> careful with this routine, as it short-circuits
+some of Perl\'s fundamental security features.  XS module authors should not
 use this function unless they fully understand all the implications of
 unconditionally untainting the value. Untainting should be done in the
 standard perl fashion, via a carefully crafted regexp, rather than directly
@@ -2770,7 +2961,10 @@ NOTE: the perl_ form of this function is deprecated.
 
 	bool	strEQ(char* s1, char* s2)','name' => 'strEQ'},'sv_upgrade' => {'text' => 'Upgrade an SV to a more complex form.  Generally adds a new body type to the
 SV, then copies across as much information as possible from the old body.
-You generally want to use the C<SvUPGRADE> macro wrapper. See also C<svtype>.
+It croaks if the SV is already in a more complex form than requested.  You
+generally want to use the C<SvUPGRADE> macro wrapper, which checks the type
+before calling C<sv_upgrade>, and hence does not croak.  See also
+C<svtype>.
 
 	void	sv_upgrade(SV *const sv, svtype new_type)','name' => 'sv_upgrade'},'safesysmalloc' => {'text' => '','name' => 'safesysmalloc'},'save_item' => {'text' => '','name' => 'save_item'},'isUPPER' => {'text' => 'Returns a boolean indicating whether the specified character is an
 uppercase character in the platform\'s native character set.
@@ -2811,12 +3005,23 @@ B<private> setting.  Use C<SvNOK> instead.
 	U32	SvNOKp(SV* sv)','name' => 'SvNOKp'},'nothreadhook' => {'text' => 'Stub that provides thread hook for perl_destruct when there are
 no threads.
 
-	int	nothreadhook()','name' => 'nothreadhook'},'utf8_to_uvchr' => {'text' => 'Returns the native code point of the first character in the string C<s>
+	int	nothreadhook()','name' => 'nothreadhook'},'utf8_to_uvchr' => {'text' => 'DEPRECATED!
+
+Returns the native code point of the first character in the string C<s>
 which is assumed to be in UTF-8 encoding; C<retlen> will be set to the
 length, in bytes, of that character.
 
-If C<s> does not point to a well-formed UTF-8 character, zero is
-returned and retlen is set, if possible, to -1.
+Some, but not all, UTF-8 malformations are detected, and in fact, some
+malformed input could cause reading beyond the end of the input buffer, which
+is why this function is deprecated.  Use L</utf8_to_uvchr_buf> instead.
+
+If C<s> points to one of the detected malformations, and UTF8 warnings are
+enabled, zero is returned and C<*retlen> is set (if C<retlen> isn\'t
+NULL) to -1.  If those warnings are off, the computed value if well-defined (or
+the Unicode REPLACEMENT CHARACTER, if not) is silently returned, and C<*retlen>
+is set (if C<retlen> isn\'t NULL) so that (S<C<s> + C<*retlen>>) is the
+next possible position in C<s> that could begin a non-malformed character.
+See L</utf8n_to_uvuni> for details on when the REPLACEMENT CHARACTER is returned.
 
 	UV	utf8_to_uvchr(const U8 *s, STRLEN *retlen)','name' => 'utf8_to_uvchr'},'bytes_to_utf8' => {'text' => 'Converts a string C<s> of length C<len> bytes from the native encoding into
 UTF-8.
@@ -2827,12 +3032,14 @@ A NUL character will be written after the end of the string.
 
 If you want to convert to UTF-8 from encodings other than
 the native (Latin1 or EBCDIC),
-see sv_recode_to_utf8().
+see L</sv_recode_to_utf8>().
 
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	U8*	bytes_to_utf8(const U8 *s, STRLEN *len)','name' => 'bytes_to_utf8'},'SvIsCOW_shared_hash' => {'text' => 'Returns a boolean indicating whether the SV is Copy-On-Write shared hash key
+	U8*	bytes_to_utf8(const U8 *s, STRLEN *len)','name' => 'bytes_to_utf8'},'HvENAMELEN' => {'text' => 'Returns the length of the stash\'s effective name.
+
+	STRLEN	HvENAMELEN(HV *stash)','name' => 'HvENAMELEN'},'SvIsCOW_shared_hash' => {'text' => 'Returns a boolean indicating whether the SV is Copy-On-Write shared hash key
 scalar.
 
 	bool	SvIsCOW_shared_hash(SV* sv)','name' => 'SvIsCOW_shared_hash'},'start_subparse' => {'text' => '','name' => 'start_subparse'},'mg_size' => {'text' => '','name' => 'mg_size'},'to_uni_lower_lc' => {'text' => '','name' => 'to_uni_lower_lc'},'mg_free_type' => {'text' => 'Remove any magic of type I<how> from the SV I<sv>.  See L</sv_magic>.
@@ -2890,7 +3097,7 @@ Returns a pointer to the character buffer.
 If the SV has the UTF-8 status set, then the bytes appended should be
 valid UTF-8.  Handles \'get\' magic, but not \'set\' magic.  See C<sv_catpv_mg>.
 
-	void	sv_catpv(SV *const sv, const char* ptr)','name' => 'sv_catpv'},'fprintf_nocontext' => {'text' => '','name' => 'fprintf_nocontext'},'sv_len' => {'text' => 'Returns the length of the string in the SV. Handles magic and type
+	void	sv_catpv(SV *const sv, const char* ptr)','name' => 'sv_catpv'},'fprintf_nocontext' => {'text' => '','name' => 'fprintf_nocontext'},'sv_len' => {'text' => 'Returns the length of the string in the SV.  Handles magic and type
 coercion.  See also C<SvCUR>, which gives raw access to the xpv_cur slot.
 
 	STRLEN	sv_len(SV *const sv)','name' => 'sv_len'},'PerlIO_stderr' => {'text' => '','name' => 'PerlIO_stderr'},'sv_pvutf8' => {'text' => 'Use the C<SvPVutf8_nolen> macro instead
@@ -2969,20 +3176,36 @@ already been done, it will not be redone, and C<< o->op_next >> will be
 returned. If C<< o->op_next >> is not already set, I<o> should be at
 least an C<UNOP>.
 
-	OP*	LINKLIST(OP *o)','name' => 'LINKLIST'},'cast_iv' => {'text' => '','name' => 'cast_iv'},'savesvpv' => {'text' => 'A version of C<savepv()>/C<savepvn()> which gets the string to duplicate from
+	OP*	LINKLIST(OP *o)','name' => 'LINKLIST'},'utf8_to_uvuni_buf' => {'text' => 'Returns the Unicode code point of the first character in the string C<s> which
+is assumed to be in UTF-8 encoding; C<send> points to 1 beyond the end of C<s>.
+C<retlen> will be set to the length, in bytes, of that character.
+
+This function should only be used when the returned UV is considered
+an index into the Unicode semantic tables (e.g. swashes).
+
+If C<s> does not point to a well-formed UTF-8 character and UTF8 warnings are
+enabled, zero is returned and C<*retlen> is set (if C<retlen> isn\'t
+NULL) to -1.  If those warnings are off, the computed value if well-defined (or
+the Unicode REPLACEMENT CHARACTER, if not) is silently returned, and C<*retlen>
+is set (if C<retlen> isn\'t NULL) so that (S<C<s> + C<*retlen>>) is the
+next possible position in C<s> that could begin a non-malformed character.
+See L</utf8n_to_uvuni> for details on when the REPLACEMENT CHARACTER is returned.
+
+	UV	utf8_to_uvuni_buf(const U8 *s, const U8 *send,
+		                  STRLEN *retlen)','name' => 'utf8_to_uvuni_buf'},'cast_iv' => {'text' => '','name' => 'cast_iv'},'savesvpv' => {'text' => 'A version of C<savepv()>/C<savepvn()> which gets the string to duplicate from
 the passed in SV using C<SvPV()>
 
 	char*	savesvpv(SV* sv)','name' => 'savesvpv'},'CLASS' => {'text' => 'Variable which is setup by C<xsubpp> to indicate the 
 class name for a C++ XS constructor.  This is always a C<char*>.  See C<THIS>.
 
-	char*	CLASS','name' => 'CLASS'},'foldEQ_latin1' => {'text' => '','name' => 'foldEQ_latin1'},'newAVREF' => {'text' => '','name' => 'newAVREF'},'HeKLEN' => {'text' => 'If this is negative, and amounts to C<HEf_SVKEY>, it indicates the entry
+	char*	CLASS','name' => 'CLASS'},'newAVREF' => {'text' => '','name' => 'newAVREF'},'foldEQ_latin1' => {'text' => '','name' => 'foldEQ_latin1'},'HeKLEN' => {'text' => 'If this is negative, and amounts to C<HEf_SVKEY>, it indicates the entry
 holds an C<SV*> key.  Otherwise, holds the actual length of the key.  Can
 be assigned to. The C<HePV()> macro is usually preferable for finding key
 lengths.
 
 	STRLEN	HeKLEN(HE* he)','name' => 'HeKLEN'},'sv_pvn_force_flags' => {'text' => 'Get a sensible string out of the SV somehow.
 If C<flags> has C<SV_GMAGIC> bit set, will C<mg_get> on C<sv> if
-appropriate, else not. C<sv_pvn_force> and C<sv_pvn_force_nomg> are
+appropriate, else not.  C<sv_pvn_force> and C<sv_pvn_force_nomg> are
 implemented in terms of this function.
 You normally want to use the various wrapper macros instead: see
 C<SvPV_force> and C<SvPV_force_nomg>
@@ -3021,13 +3244,15 @@ called to declare it.  Do not call multiple C<TARG>-oriented macros to
 return lists from XSUB\'s - see C<mPUSHn> instead.  See also C<XPUSHn> and
 C<mXPUSHn>.
 
-	void	PUSHn(NV nv)','name' => 'PUSHn'},'to_utf8_title' => {'text' => 'Convert the UTF-8 encoded character at p to its titlecase version and
-store that in UTF-8 in ustrp and its length in bytes in lenp.  Note
-that the ustrp needs to be at least UTF8_MAXBYTES_CASE+1 bytes since the
+	void	PUSHn(NV nv)','name' => 'PUSHn'},'to_utf8_title' => {'text' => 'Convert the UTF-8 encoded character at C<p> to its titlecase version and
+store that in UTF-8 in C<ustrp> and its length in bytes in C<lenp>.  Note
+that the C<ustrp> needs to be at least UTF8_MAXBYTES_CASE+1 bytes since the
 titlecase version may be longer than the original character.
 
 The first character of the titlecased version is returned
 (but note, as explained above, that there may be more.)
+
+The character at C<p> is assumed by this routine to be well-formed.
 
 	UV	to_utf8_title(const U8 *p, U8* ustrp,
 		              STRLEN *lenp)','name' => 'to_utf8_title'},'PerlIO_unread' => {'text' => '','name' => 'PerlIO_unread'},'gv_fullname' => {'text' => '','name' => 'gv_fullname'},'PL_sv_yes' => {'text' => 'This is the C<true> SV.  See C<PL_sv_no>.  Always refer to this as
@@ -3045,23 +3270,25 @@ with C<&>, or a method call, or a call through a subroutine reference,
 or any other call where the callee can\'t be identified at compile time,
 or a call where the callee has no prototype.
 
-	OP *	ck_entersub_args_list(OP *entersubop)','name' => 'ck_entersub_args_list'},'ck_warner' => {'text' => '','name' => 'ck_warner'},'is_ascii_string' => {'text' => 'Returns true if the first C<len> bytes of the given string are the same whether
+	OP *	ck_entersub_args_list(OP *entersubop)','name' => 'ck_entersub_args_list'},'ck_warner' => {'text' => '','name' => 'ck_warner'},'is_ascii_string' => {'text' => 'Returns true if the first C<len> bytes of the string C<s> are the same whether
 or not the string is encoded in UTF-8 (or UTF-EBCDIC on EBCDIC machines).  That
 is, if they are invariant.  On ASCII-ish machines, only ASCII characters
 fit this definition, hence the function\'s name.
 
 If C<len> is 0, it will be calculated using C<strlen(s)>.  
 
-See also is_utf8_string(), is_utf8_string_loclen(), and is_utf8_string_loc().
+See also L</is_utf8_string>(), L</is_utf8_string_loclen>(), and L</is_utf8_string_loc>().
 
-	bool	is_ascii_string(const U8 *s, STRLEN len)','name' => 'is_ascii_string'},'SvUTF8_off' => {'text' => 'Unsets the UTF-8 status of an SV.
+	bool	is_ascii_string(const U8 *s, STRLEN len)','name' => 'is_ascii_string'},'SvUTF8_off' => {'text' => 'Unsets the UTF-8 status of an SV (the data is not changed, just the flag).
+Do not use frivolously.
 
 	void	SvUTF8_off(SV *sv)','name' => 'SvUTF8_off'},'sv_dec_nomg' => {'text' => 'Auto-decrement of the value in the SV, doing string to numeric conversion
-if necessary. Handles operator overloading. Skips handling \'get\' magic.
+if necessary.  Handles operator overloading.  Skips handling \'get\' magic.
 
 	void	sv_dec_nomg(SV *const sv)','name' => 'sv_dec_nomg'},'looks_like_number' => {'text' => 'Test if the content of an SV looks like a number (or is a number).
 C<Inf> and C<Infinity> are treated as numbers (so will not issue a
-non-numeric warning), even if your atof() doesn\'t grok them.
+non-numeric warning), even if your atof() doesn\'t grok them.  Get-magic is
+ignored.
 
 	I32	looks_like_number(SV *const sv)','name' => 'looks_like_number'},'sv_catpv_mg' => {'text' => 'Like C<sv_catpv>, but also handles \'set\' magic.
 
@@ -3138,7 +3365,7 @@ has been loaded.
 	void	SvUNLOCK(SV* sv)','name' => 'SvUNLOCK'},'mg_set' => {'text' => 'Do magic after a value is assigned to the SV.  See C<sv_magic>.
 
 	int	mg_set(SV* sv)','name' => 'mg_set'},'sv_mortalcopy' => {'text' => 'Creates a new SV which is a copy of the original SV (using C<sv_setsv>).
-The new SV is marked as mortal. It will be destroyed "soon", either by an
+The new SV is marked as mortal.  It will be destroyed "soon", either by an
 explicit call to FREETMPS, or by an implicit call at places such as
 statement boundaries.  See also C<sv_newmortal> and C<sv_2mortal>.
 
@@ -3152,10 +3379,10 @@ removed without notice.
 		               U32 hash, U32 flags)','name' => 'cophh_fetch_sv'},'sv_catpvn_nomg' => {'text' => 'Like C<sv_catpvn> but doesn\'t process magic.
 
 	void	sv_catpvn_nomg(SV* sv, const char* ptr,
-		               STRLEN len)','name' => 'sv_catpvn_nomg'},'newSVpvs_flags' => {'text' => 'Like C<newSVpvn_flags>, but takes a literal string instead of a string/length
+		               STRLEN len)','name' => 'sv_catpvn_nomg'},'newHVhv' => {'text' => '','name' => 'newHVhv'},'newSVpvs_flags' => {'text' => 'Like C<newSVpvn_flags>, but takes a literal string instead of a string/length
 pair.
 
-	SV*	newSVpvs_flags(const char* s, U32 flags)','name' => 'newSVpvs_flags'},'newHVhv' => {'text' => '','name' => 'newHVhv'},'savepvn' => {'text' => 'Perl\'s version of what C<strndup()> would be if it existed. Returns a
+	SV*	newSVpvs_flags(const char* s, U32 flags)','name' => 'newSVpvs_flags'},'savepvn' => {'text' => 'Perl\'s version of what C<strndup()> would be if it existed. Returns a
 pointer to a newly allocated string which is a duplicate of the first
 C<len> bytes from C<pv>, plus a trailing NUL byte. The memory allocated for
 the new string can be freed with the C<Safefree()> function.
@@ -3180,10 +3407,15 @@ removed without notice.
 		                U32 hash, U32 flags)','name' => 'cophh_delete_sv'},'SvCUR' => {'text' => 'Returns the length of the string which is in the SV.  See C<SvLEN>.
 
 	STRLEN	SvCUR(SV* sv)','name' => 'SvCUR'},'sv_2nv_flags' => {'text' => 'Return the num value of an SV, doing any necessary string or integer
-conversion. If flags includes SV_GMAGIC, does an mg_get() first.
+conversion.  If flags includes SV_GMAGIC, does an mg_get() first.
 Normally used via the C<SvNV(sv)> and C<SvNVx(sv)> macros.
 
-	NV	sv_2nv_flags(SV *const sv, const I32 flags)','name' => 'sv_2nv_flags'},'gv_init' => {'text' => '','name' => 'gv_init'},'sv_bless' => {'text' => 'Blesses an SV into a specified package.  The SV must be an RV.  The package
+	NV	sv_2nv_flags(SV *const sv, const I32 flags)','name' => 'sv_2nv_flags'},'gv_init' => {'text' => 'The old form of gv_init_pvn().  It does not work with UTF8 strings, as it
+has no flags parameter.  If the C<multi> parameter is set, the
+GV_ADDMULTI flag will be passed to gv_init_pvn().
+
+	void	gv_init(GV* gv, HV* stash, const char* name,
+		        STRLEN len, int multi)','name' => 'gv_init'},'sv_bless' => {'text' => 'Blesses an SV into a specified package.  The SV must be an RV.  The package
 must be designated by its stash (see C<gv_stashpv()>).  The reference count
 of the SV is unaffected.
 
@@ -3214,6 +3446,9 @@ L</cv_get_call_checker>.
 GV; or the recursive result if we\'re an RV; or the IO slot of the symbol
 named after the PV if we\'re a string.
 
+\'Get\' magic is ignored on the sv passed in, but will be called on
+C<SvRV(sv)> if sv is an RV.
+
 	IO*	sv_2io(SV *const sv)','name' => 'sv_2io'},'SvMAGIC_set' => {'text' => 'Set the value of the MAGIC pointer in sv to val.  See C<SvIV_set>.
 
 	void	SvMAGIC_set(SV* sv, MAGIC* val)','name' => 'SvMAGIC_set'},'isALPHA' => {'text' => 'Returns a boolean indicating whether the specified character is an
@@ -3222,7 +3457,7 @@ See the L<top of this section|/Character classes> for an explanation of variants
 C<isALPHA_A> and C<isALPHA_L1>.
 
 	bool	isALPHA(char ch)','name' => 'isALPHA'},'newSVhek' => {'text' => 'Creates a new SV from the hash key structure.  It will generate scalars that
-point to the shared string table where possible. Returns a new (undefined)
+point to the shared string table where possible.  Returns a new (undefined)
 SV if the hek is NULL.
 
 	SV*	newSVhek(const HEK *const hek)','name' => 'newSVhek'},'taint_env' => {'text' => '','name' => 'taint_env'},'Nullhv' => {'text' => 'Null HV pointer.
@@ -3232,7 +3467,7 @@ SV if the hek is NULL.
 All of the following SvREFCNT_inc* macros are optimized versions of
 SvREFCNT_inc, and can be replaced with SvREFCNT_inc.
 
-	SV*	SvREFCNT_inc(SV* sv)','name' => 'SvREFCNT_inc'},'SvTYPE' => {'text' => 'Returns the type of the SV.  See C<svtype>.
+	SV*	SvREFCNT_inc(SV* sv)','name' => 'SvREFCNT_inc'},'newGVgen_flags' => {'text' => '','name' => 'newGVgen_flags'},'SvTYPE' => {'text' => 'Returns the type of the SV.  See C<svtype>.
 
 	svtype	SvTYPE(SV* sv)','name' => 'SvTYPE'},'block_gimme' => {'text' => '','name' => 'block_gimme'},'SvROK_off' => {'text' => 'Unsets the RV status of an SV.
 
@@ -3245,10 +3480,10 @@ Does not use C<TARG>.  See also C<XPUSHs>, C<PUSHmortal> and C<PUSHs>.
 
 	void	SvNOK_on(SV* sv)','name' => 'SvNOK_on'},'SvVOK' => {'text' => 'Returns a boolean indicating whether the SV contains a v-string.
 
-	bool	SvVOK(SV* sv)','name' => 'SvVOK'},'sv_setpvf_mg' => {'text' => 'Like C<sv_setpvf>, but also handles \'set\' magic.
+	bool	SvVOK(SV* sv)','name' => 'SvVOK'},'whichsig_pvn' => {'text' => '','name' => 'whichsig_pvn'},'sv_setpvf_mg' => {'text' => 'Like C<sv_setpvf>, but also handles \'set\' magic.
 
-	void	sv_setpvf_mg(SV *const sv, const char *const pat,
-		             ...)','name' => 'sv_setpvf_mg'},'my_chsize' => {'text' => '','name' => 'my_chsize'},'newLISTOP' => {'text' => 'Constructs, checks, and returns an op of any list type.  I<type> is
+	void	sv_setpvf_mg(SV *const sv,
+		             const char *const pat, ...)','name' => 'sv_setpvf_mg'},'my_chsize' => {'text' => '','name' => 'my_chsize'},'newLISTOP' => {'text' => 'Constructs, checks, and returns an op of any list type.  I<type> is
 the opcode.  I<flags> gives the eight bits of C<op_flags>, except that
 C<OPf_KIDS> will be set automatically if required.  I<first> and I<last>
 supply up to two ops to be direct children of the list op; they are
@@ -3279,7 +3514,9 @@ double.  Checks the B<private> setting.  Use C<SvNIOK> instead.
 running Perl interpreters. This should be called only once, after
 freeing any remaining Perl interpreters.
 
-	void	PERL_SYS_TERM()','name' => 'PERL_SYS_TERM'},'is_uni_alnum_lc' => {'text' => '','name' => 'is_uni_alnum_lc'},'mro_register' => {'text' => '','name' => 'mro_register'},'vnewSVpvf' => {'text' => '','name' => 'vnewSVpvf'},'rv2cv_op_cv' => {'text' => 'Examines an op, which is expected to identify a subroutine at runtime,
+	void	PERL_SYS_TERM()','name' => 'PERL_SYS_TERM'},'is_uni_alnum_lc' => {'text' => '','name' => 'is_uni_alnum_lc'},'mro_register' => {'text' => 'Registers a custom mro plugin.  See L<perlmroapi> for details.
+
+	void	mro_register(const struct mro_alg *mro)','name' => 'mro_register'},'vnewSVpvf' => {'text' => '','name' => 'vnewSVpvf'},'rv2cv_op_cv' => {'text' => 'Examines an op, which is expected to identify a subroutine at runtime,
 and attempts to determine at compile time which subroutine it identifies.
 This is normally used during Perl compilation to determine whether
 a prototype can be applied to a function call.  I<cvop> is the op
@@ -3313,7 +3550,7 @@ A null pointer is returned as usual if there is no statically-determinable
 subroutine.
 
 	CV *	rv2cv_op_cv(OP *cvop, U32 flags)','name' => 'rv2cv_op_cv'},'sv_len_utf8' => {'text' => 'Returns the number of characters in the string in an SV, counting wide
-UTF-8 bytes as a single character. Handles magic and type coercion.
+UTF-8 bytes as a single character.  Handles magic and type coercion.
 
 	STRLEN	sv_len_utf8(SV *const sv)','name' => 'sv_len_utf8'},'PerlIO_set_cnt' => {'text' => '','name' => 'PerlIO_set_cnt'},'SvREFCNT_inc_simple_void' => {'text' => 'Same as SvREFCNT_inc_simple, but can only be used if you don\'t need the
 return value.  The macro doesn\'t need to return a meaningful value.
@@ -3350,8 +3587,9 @@ absolute value).  IS_NUMBER_IN_UV is not set if e notation was used or the
 number is larger than a UV.
 
 	int	grok_number(const char *pv, STRLEN len,
-		            UV *valuep)','name' => 'grok_number'},'csighandler' => {'text' => '','name' => 'csighandler'},'SvIVx' => {'text' => 'Coerces the given SV to an integer and returns it. Guarantees to evaluate
-C<sv> only once. Only use this if C<sv> is an expression with side effects,
+		            UV *valuep)','name' => 'grok_number'},'csighandler' => {'text' => '','name' => 'csighandler'},'SvIVx' => {'text' => 'Coerces the given SV to an integer and returns it.
+Guarantees to evaluate C<sv> only once.  Only use
+this if C<sv> is an expression with side effects,
 otherwise use the more efficient C<SvIV>.
 
 	IV	SvIVx(SV* sv)','name' => 'SvIVx'},'grok_numeric_radix' => {'text' => 'Scan and skip for a numeric decimal separator (radix).
@@ -3360,7 +3598,12 @@ otherwise use the more efficient C<SvIV>.
 		                   const char *send)','name' => 'grok_numeric_radix'},'XST_mNO' => {'text' => 'Place C<&PL_sv_no> into the specified position C<pos> on the
 stack.
 
-	void	XST_mNO(int pos)','name' => 'XST_mNO'},'gp_dup' => {'text' => '','name' => 'gp_dup'},'savepvs' => {'text' => 'Like C<savepvn>, but takes a literal string instead of a string/length pair.
+	void	XST_mNO(int pos)','name' => 'XST_mNO'},'gp_dup' => {'text' => '','name' => 'gp_dup'},'sv_derived_from_pv' => {'text' => 'Exactly like L</sv_derived_from_pvn>, but takes a nul-terminated string 
+instead of a string/length pair.
+
+	bool	sv_derived_from_pv(SV* sv,
+		                   const char *const name,
+		                   U32 flags)','name' => 'sv_derived_from_pv'},'savepvs' => {'text' => 'Like C<savepvn>, but takes a literal string instead of a string/length pair.
 
 	char*	savepvs(const char* s)','name' => 'savepvs'},'SvSTASH_set' => {'text' => 'Set the value of the STASH pointer in sv to val.  See C<SvIV_set>.
 
@@ -3369,13 +3612,14 @@ stack.
 	void	sv_catpv_nomg(SV* sv, const char* ptr)','name' => 'sv_catpv_nomg'},'ZeroD' => {'text' => 'Like C<Zero> but returns dest. Useful for encouraging compilers to tail-call
 optimise.
 
-	void *	ZeroD(void* dest, int nitems, type)','name' => 'ZeroD'},'sv_collxfrm' => {'text' => 'This calls C<sv_collxfrm_flags> with the SV_GMAGIC flag. See
+	void *	ZeroD(void* dest, int nitems, type)','name' => 'ZeroD'},'sv_collxfrm' => {'text' => 'This calls C<sv_collxfrm_flags> with the SV_GMAGIC flag.  See
 C<sv_collxfrm_flags>.
 
 	char*	sv_collxfrm(SV *const sv, STRLEN *const nxp)','name' => 'sv_collxfrm'},'swash_fetch' => {'text' => '','name' => 'swash_fetch'},'SP' => {'text' => 'Stack pointer.  This is usually handled by C<xsubpp>.  See C<dSP> and
 C<SPAGAIN>.','name' => 'SP'},'sv_catpvn_mg' => {'text' => 'Like C<sv_catpvn>, but also handles \'set\' magic.
 
-	void	sv_catpvn_mg(SV *sv, const char *ptr, STRLEN len)','name' => 'sv_catpvn_mg'},'op_lvalue' => {'text' => 'Propagate lvalue ("modifiable") context to an op and its children.
+	void	sv_catpvn_mg(SV *sv, const char *ptr,
+		             STRLEN len)','name' => 'sv_catpvn_mg'},'op_lvalue' => {'text' => 'Propagate lvalue ("modifiable") context to an op and its children.
 I<type> represents the context type, roughly based on the type of op that
 would do the modifying, although C<local()> is represented by OP_NULL,
 because it has no op type of its own (it is signalled by a flag on
@@ -3479,10 +3723,10 @@ removed without notice.
 	char *	lex_grow_linestr(STRLEN len)','name' => 'lex_grow_linestr'},'dORIGMARK' => {'text' => 'Saves the original stack mark for the XSUB.  See C<ORIGMARK>.
 
 		dORIGMARK;','name' => 'dORIGMARK'},'sv_inc_nomg' => {'text' => 'Auto-increment of the value in the SV, doing string to numeric conversion
-if necessary. Handles operator overloading. Skips handling \'get\' magic.
+if necessary.  Handles operator overloading.  Skips handling \'get\' magic.
 
 	void	sv_inc_nomg(SV *const sv)','name' => 'sv_inc_nomg'},'sv_newmortal' => {'text' => 'Creates a new null SV which is mortal.  The reference count of the SV is
-set to 1. It will be destroyed "soon", either by an explicit call to
+set to 1.  It will be destroyed "soon", either by an explicit call to
 FREETMPS, or by an implicit call at places such as statement boundaries.
 See also C<sv_mortalcopy> and C<sv_2mortal>.
 
@@ -3514,7 +3758,10 @@ function.  If C<consume> is true, then the function is permitted (but not
 required) to modify and return C<basemsg> instead of allocating a new SV.
 
 	SV *	mess_sv(SV *basemsg, bool consume)','name' => 'mess_sv'},'is_utf8_xidcont' => {'text' => '','name' => 'is_utf8_xidcont'},'hv_clear' => {'text' => 'Frees the all the elements of a hash, leaving it empty.
-The XS equivalent of %hash = (). See also L</hv_undef>.
+The XS equivalent of C<%hash = ()>.  See also L</hv_undef>.
+
+If any destructors are triggered as a result, the hv itself may
+be freed.
 
 	void	hv_clear(HV *hv)','name' => 'hv_clear'},'get_hv' => {'text' => 'Returns the HV of the specified Perl hash.  C<flags> are passed to
 C<gv_fetchpv>. If C<GV_ADD> is set and the
@@ -3544,16 +3791,16 @@ cast.
 	void	Renewc(void* ptr, int nitems, type, cast)','name' => 'Renewc'},'sv_nv' => {'text' => 'A private implementation of the C<SvNVx> macro for compilers which can\'t
 cope with complex macro expressions. Always use the macro instead.
 
-	NV	sv_nv(SV* sv)','name' => 'sv_nv'},'SvPOK_off' => {'text' => 'Unsets the PV status of an SV.
-
-	void	SvPOK_off(SV* sv)','name' => 'SvPOK_off'},'PUSHu' => {'text' => 'Push an unsigned integer onto the stack.  The stack must have room for this
+	NV	sv_nv(SV* sv)','name' => 'sv_nv'},'PUSHu' => {'text' => 'Push an unsigned integer onto the stack.  The stack must have room for this
 element.  Handles \'set\' magic.  Uses C<TARG>, so C<dTARGET> or C<dXSTARG>
 should be called to declare it.  Do not call multiple C<TARG>-oriented
 macros to return lists from XSUB\'s - see C<mPUSHu> instead.  See also
 C<XPUSHu> and C<mXPUSHu>.
 
-	void	PUSHu(UV uv)','name' => 'PUSHu'},'newSVsv' => {'text' => 'Creates a new SV which is an exact duplicate of the original SV.
-(Uses C<sv_setsv>).
+	void	PUSHu(UV uv)','name' => 'PUSHu'},'SvPOK_off' => {'text' => 'Unsets the PV status of an SV.
+
+	void	SvPOK_off(SV* sv)','name' => 'SvPOK_off'},'newSVsv' => {'text' => 'Creates a new SV which is an exact duplicate of the original SV.
+(Uses C<sv_setsv>.)
 
 	SV*	newSVsv(SV *const old)','name' => 'newSVsv'},'hv_magic' => {'text' => 'Adds magic to a hash.  See C<sv_magic>.
 
@@ -3562,8 +3809,13 @@ pointer may be either C<char*> or C<SV*>, depending on the value of
 C<HeKLEN()>.  Can be assigned to.  The C<HePV()> or C<HeSVKEY()> macros are
 usually preferable for finding the value of a key.
 
-	void*	HeKEY(HE* he)','name' => 'HeKEY'},'SvEND' => {'text' => 'Returns a pointer to the last character in the string which is in the SV.
+	void*	HeKEY(HE* he)','name' => 'HeKEY'},'SvEND' => {'text' => 'Returns a pointer to the spot just after the last character in
+the string which is in the SV, where there is usually a trailing
+null (even though Perl scalars do not strictly require it).
 See C<SvCUR>.  Access the character as *(SvEND(sv)).
+
+Warning: If C<SvCUR> is equal to C<SvLEN>, then C<SvEND> points to
+unallocated memory.
 
 	char*	SvEND(SV* sv)','name' => 'SvEND'},'save_delete' => {'text' => '','name' => 'save_delete'},'GIMME_V' => {'text' => 'The XSUB-writer\'s equivalent to Perl\'s C<wantarray>.  Returns C<G_VOID>,
 C<G_SCALAR> or C<G_ARRAY> for void, scalar or list context,
@@ -3571,12 +3823,13 @@ respectively. See L<perlcall> for a usage example.
 
 	U32	GIMME_V','name' => 'GIMME_V'},'re_compile' => {'text' => '','name' => 're_compile'},'sv_setsv_flags' => {'text' => 'Copies the contents of the source SV C<ssv> into the destination SV
 C<dsv>.  The source SV may be destroyed if it is mortal, so don\'t use this
-function if the source SV needs to be reused. Does not handle \'set\' magic.
+function if the source SV needs to be reused.  Does not handle \'set\' magic.
 Loosely speaking, it performs a copy-by-value, obliterating any previous
 content of the destination.
 If the C<flags> parameter has the C<SV_GMAGIC> bit set, will C<mg_get> on
-C<ssv> if appropriate, else not. If the C<flags> parameter has the
-C<NOSTEAL> bit set then the buffers of temps will not be stolen. <sv_setsv>
+C<ssv> if appropriate, else not.  If the C<flags>
+parameter has the C<NOSTEAL> bit set then the
+buffers of temps will not be stolen.  <sv_setsv>
 and C<sv_setsv_nomg> are implemented in terms of this function.
 
 You probably want to use one of the assortment of wrappers, such as
@@ -3587,7 +3840,33 @@ This is the primary function for copying scalars, and most other
 copy-ish functions and macros use this underneath.
 
 	void	sv_setsv_flags(SV *dstr, SV *sstr,
-		               const I32 flags)','name' => 'sv_setsv_flags'},'newATTRSUB' => {'text' => '','name' => 'newATTRSUB'},'Copy' => {'text' => 'The XSUB-writer\'s interface to the C C<memcpy> function.  The C<src> is the
+		               const I32 flags)','name' => 'sv_setsv_flags'},'gv_init_pvn' => {'text' => 'Converts a scalar into a typeglob.  This is an incoercible typeglob;
+assigning a reference to it will assign to one of its slots, instead of
+overwriting it as happens with typeglobs created by SvSetSV.  Converting
+any scalar that is SvOK() may produce unpredictable results and is reserved
+for perl\'s internal use.
+
+C<gv> is the scalar to be converted.
+
+C<stash> is the parent stash/package, if any.
+
+C<name> and C<len> give the name.  The name must be unqualified;
+that is, it must not include the package name.  If C<gv> is a
+stash element, it is the caller\'s responsibility to ensure that the name
+passed to this function matches the name of the element.  If it does not
+match, perl\'s internal bookkeeping will get out of sync.
+
+C<flags> can be set to SVf_UTF8 if C<name> is a UTF8 string, or
+the return value of SvUTF8(sv).  It can also take the
+GV_ADDMULTI flag, which means to pretend that the GV has been
+seen before (i.e., suppress "Used once" warnings).
+
+	void	gv_init_pvn(GV* gv, HV* stash, const char* name,
+		            STRLEN len, U32 flags)','name' => 'gv_init_pvn'},'newATTRSUB' => {'text' => '','name' => 'newATTRSUB'},'gv_fetchmeth_sv' => {'text' => 'Exactly like L</gv_fetchmeth_pvn>, but takes the name string in the form
+of an SV instead of a string/length pair.
+
+	GV*	gv_fetchmeth_sv(HV* stash, SV* namesv,
+		                I32 level, U32 flags)','name' => 'gv_fetchmeth_sv'},'Copy' => {'text' => 'The XSUB-writer\'s interface to the C C<memcpy> function.  The C<src> is the
 source, C<dest> is the destination, C<nitems> is the number of items, and C<type> is
 the type.  May fail on overlapping copies.  See also C<Move>.
 
@@ -3624,12 +3903,39 @@ flags can be OR\'ed together:
 	                           HV *typestash, HV *ourstash)','name' => 'pad_add_name_pvn'},'he_dup' => {'text' => '','name' => 'he_dup'},'gv_fullname3' => {'text' => '','name' => 'gv_fullname3'},'mPUSHu' => {'text' => 'Push an unsigned integer onto the stack.  The stack must have room for this
 element.  Does not use C<TARG>.  See also C<PUSHu>, C<mXPUSHu> and C<XPUSHu>.
 
-	void	mPUSHu(UV uv)','name' => 'mPUSHu'},'cophh_new_empty' => {'text' => 'Generate and return a fresh cop hints hash containing no entries.
+	void	mPUSHu(UV uv)','name' => 'mPUSHu'},'gv_fetchmeth_pvn' => {'text' => 'Returns the glob with the given C<name> and a defined subroutine or
+C<NULL>.  The glob lives in the given C<stash>, or in the stashes
+accessible via @ISA and UNIVERSAL::.
+
+The argument C<level> should be either 0 or -1.  If C<level==0>, as a
+side-effect creates a glob with the given C<name> in the given C<stash>
+which in the case of success contains an alias for the subroutine, and sets
+up caching info for this glob.
+
+Currently, the only significant value for C<flags> is SVf_UTF8.
+
+This function grants C<"SUPER"> token as a postfix of the stash name. The
+GV returned from C<gv_fetchmeth> may be a method cache entry, which is not
+visible to Perl code.  So when calling C<call_sv>, you should not use
+the GV directly; instead, you should use the method\'s CV, which can be
+obtained from the GV with the C<GvCV> macro.
+
+	GV*	gv_fetchmeth_pvn(HV* stash, const char* name,
+		                 STRLEN len, I32 level,
+		                 U32 flags)','name' => 'gv_fetchmeth_pvn'},'cophh_new_empty' => {'text' => 'Generate and return a fresh cop hints hash containing no entries.
 
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	COPHH *	cophh_new_empty()','name' => 'cophh_new_empty'},'op_append_list' => {'text' => 'Concatenate the lists of ops contained directly within two list-type ops,
+	COPHH *	cophh_new_empty()','name' => 'cophh_new_empty'},'sv_derived_from_pvn' => {'text' => 'Returns a boolean indicating whether the SV is derived from the specified class
+I<at the C level>.  To check derivation at the Perl level, call C<isa()> as a
+normal Perl method.
+
+Currently, the only significant value for C<flags> is SVf_UTF8.
+
+	bool	sv_derived_from_pvn(SV* sv,
+		                    const char *const name,
+		                    const STRLEN len, U32 flags)','name' => 'sv_derived_from_pvn'},'op_append_list' => {'text' => 'Concatenate the lists of ops contained directly within two list-type ops,
 returning the combined list.  I<first> and I<last> are the list-type ops
 to concatenate.  I<optype> specifies the intended opcode for the list.
 If either I<first> or I<last> is not already a list of the right type,
@@ -3638,7 +3944,9 @@ the other is returned unchanged.
 
 	OP *	op_append_list(I32 optype, OP *first, OP *last)','name' => 'op_append_list'},'repeatcpy' => {'text' => '','name' => 'repeatcpy'},'do_spawn_nowait' => {'text' => '','name' => 'do_spawn_nowait'},'sv_setsv_nomg' => {'text' => 'Like C<sv_setsv> but doesn\'t process magic.
 
-	void	sv_setsv_nomg(SV* dsv, SV* ssv)','name' => 'sv_setsv_nomg'},'load_module_nocontext' => {'text' => '','name' => 'load_module_nocontext'},'re_intuit_string' => {'text' => '','name' => 're_intuit_string'},'do_magic_dump' => {'text' => '','name' => 'do_magic_dump'},'XPUSHp' => {'text' => 'Push a string onto the stack, extending the stack if necessary.  The C<len>
+	void	sv_setsv_nomg(SV* dsv, SV* ssv)','name' => 'sv_setsv_nomg'},'load_module_nocontext' => {'text' => '','name' => 'load_module_nocontext'},'re_intuit_string' => {'text' => '','name' => 're_intuit_string'},'do_magic_dump' => {'text' => '','name' => 'do_magic_dump'},'HvNAMELEN' => {'text' => 'Returns the length of the stash\'s name.
+
+	STRLEN	HvNAMELEN(HV *stash)','name' => 'HvNAMELEN'},'XPUSHp' => {'text' => 'Push a string onto the stack, extending the stack if necessary.  The C<len>
 indicates the length of the string.  Handles \'set\' magic.  Uses C<TARG>, so
 C<dTARGET> or C<dXSTARG> should be called to declare it.  Do not call
 multiple C<TARG>-oriented macros to return lists from XSUB\'s - see
@@ -3650,15 +3958,20 @@ A small internal helper function to remove a commonly duplicated idiom.
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	void	av_create_and_push(AV **const avp, SV *const val)','name' => 'av_create_and_push'},'sv_utf8_encode' => {'text' => 'Converts the PV of an SV to UTF-8, but then turns the C<SvUTF8>
+	void	av_create_and_push(AV **const avp,
+		                   SV *const val)','name' => 'av_create_and_push'},'sv_utf8_encode' => {'text' => 'Converts the PV of an SV to UTF-8, but then turns the C<SvUTF8>
 flag off so that it looks like octets again.
 
 	void	sv_utf8_encode(SV *const sv)','name' => 'sv_utf8_encode'},'SvUTF8_on' => {'text' => 'Turn on the UTF-8 status of an SV (the data is not changed, just the flag).
 Do not use frivolously.
 
-	void	SvUTF8_on(SV *sv)','name' => 'SvUTF8_on'},'sv_setpvn_mg' => {'text' => 'Like C<sv_setpvn>, but also handles \'set\' magic.
+	void	SvUTF8_on(SV *sv)','name' => 'SvUTF8_on'},'sv_does_pv' => {'text' => 'Like L</sv_does_sv>, but takes a nul-terminated string instead of an SV.
 
-	void	sv_setpvn_mg(SV *const sv, const char *const ptr,
+	bool	sv_does_pv(SV* sv, const char *const name,
+		           U32 flags)','name' => 'sv_does_pv'},'sv_setpvn_mg' => {'text' => 'Like C<sv_setpvn>, but also handles \'set\' magic.
+
+	void	sv_setpvn_mg(SV *const sv,
+		             const char *const ptr,
 		             const STRLEN len)','name' => 'sv_setpvn_mg'},'toLOWER' => {'text' => 'Converts the specified character to lowercase in the platform\'s native
 character set, if possible; otherwise returns the input character itself.
 
@@ -3669,7 +3982,8 @@ some time when tokenizing.
 
 	const char* prescan_version(const char *s, bool strict,
 	                            const char** errstr,
-	                            bool *sqv, int *ssaw_decimal,
+	                            bool *sqv,
+	                            int *ssaw_decimal,
 	                            int *swidth, bool *salpha)','name' => 'prescan_version'},'PerlIO_write' => {'text' => '','name' => 'PerlIO_write'},'hv_ksplit' => {'text' => '','name' => 'hv_ksplit'},'new_version' => {'text' => 'Returns a new version object based on the passed in SV:
 
     SV *sv = new_version(SV *ver);
@@ -3720,7 +4034,7 @@ would lose the UTF-8\'ness of the PV.
 
 	void	sv_copypv(SV *const dsv, SV *const ssv)','name' => 'sv_copypv'},'rsignal' => {'text' => '','name' => 'rsignal'},'sv_pv' => {'text' => 'Use the C<SvPV_nolen> macro instead
 
-	char*	sv_pv(SV *sv)','name' => 'sv_pv'},'is_uni_xdigit' => {'text' => '','name' => 'is_uni_xdigit'},'pv_pretty' => {'text' => 'Converts a string into something presentable, handling escaping via
+	char*	sv_pv(SV *sv)','name' => 'sv_pv'},'is_uni_xdigit' => {'text' => '','name' => 'is_uni_xdigit'},'perl_alloc_using' => {'text' => '','name' => 'perl_alloc_using'},'pv_pretty' => {'text' => 'Converts a string into something presentable, handling escaping via
 pv_escape() and supporting quoting and ellipses.
 
 If the PERL_PV_PRETTY_QUOTE flag is set then the result will be 
@@ -3745,12 +4059,12 @@ Returns a pointer to the prettified text as held by dsv.
 		          char const * const end_color,
 		          const U32 flags)','name' => 'pv_pretty'},'sv_setnv_mg' => {'text' => 'Like C<sv_setnv>, but also handles \'set\' magic.
 
-	void	sv_setnv_mg(SV *const sv, const NV num)','name' => 'sv_setnv_mg'},'perl_alloc_using' => {'text' => '','name' => 'perl_alloc_using'},'utf8_to_bytes' => {'text' => 'Converts a string C<s> of length C<len> from UTF-8 into native byte encoding.
-Unlike C<bytes_to_utf8>, this over-writes the original string, and
-updates len to contain the new length.
+	void	sv_setnv_mg(SV *const sv, const NV num)','name' => 'sv_setnv_mg'},'utf8_to_bytes' => {'text' => 'Converts a string C<s> of length C<len> from UTF-8 into native byte encoding.
+Unlike L</bytes_to_utf8>, this over-writes the original string, and
+updates C<len> to contain the new length.
 Returns zero on failure, setting C<len> to -1.
 
-If you need a copy of the string, see C<bytes_from_utf8>.
+If you need a copy of the string, see L</bytes_from_utf8>.
 
 NOTE: this function is experimental and may change or be
 removed without notice.
@@ -3779,7 +4093,8 @@ This is the recommended Unicode-aware way of saying
 
 This function will convert to UTF-8 (and not warn) even code points that aren\'t
 legal Unicode or are problematic, unless C<flags> contains one or more of the
-following flags.
+following flags:
+
 If C<uv> is a Unicode surrogate code point and UNICODE_WARN_SURROGATE is set,
 the function will raise a warning, provided UTF8 warnings are enabled.  If instead
 UNICODE_DISALLOW_SURROGATE is set, the function will fail and return NULL.
@@ -3836,8 +4151,9 @@ NOTE: this function is experimental and may change or be
 removed without notice.
 
 	SV *	cophh_fetch_pvn(const COPHH *cophh,
-		                const char *keypv, STRLEN keylen,
-		                U32 hash, U32 flags)','name' => 'cophh_fetch_pvn'},'pad_sv' => {'text' => 'Get the value at offset I<po> in the current (compiling or executing) pad.
+		                const char *keypv,
+		                STRLEN keylen, U32 hash,
+		                U32 flags)','name' => 'cophh_fetch_pvn'},'pad_sv' => {'text' => 'Get the value at offset I<po> in the current (compiling or executing) pad.
 Use macro PAD_SV instead of calling this function directly.
 
 	SV *	pad_sv(PADOFFSET po)','name' => 'pad_sv'},'amagic_call' => {'text' => '','name' => 'amagic_call'},'op_free' => {'text' => '','name' => 'op_free'},'SvPVutf8_force' => {'text' => 'Like C<SvPV_force>, but converts sv to utf8 first if necessary.
@@ -3851,12 +4167,8 @@ L<perlcall>.
 
 NOTE: the perl_ form of this function is deprecated.
 
-	I32	call_pv(const char* sub_name, I32 flags)','name' => 'call_pv'},'gv_fetchmeth_autoload' => {'text' => 'Same as gv_fetchmeth(), but looks for autoloaded subroutines too.
-Returns a glob for the subroutine.
-
-For an autoloaded subroutine without a GV, will create a GV even
-if C<level < 0>.  For an autoloaded subroutine without a stub, GvCV()
-of the result may be zero.
+	I32	call_pv(const char* sub_name, I32 flags)','name' => 'call_pv'},'gv_fetchmeth_autoload' => {'text' => 'This is the old form of L</gv_fetchmeth_pvn_autoload>, which has no flags
+parameter.
 
 	GV*	gv_fetchmeth_autoload(HV* stash,
 		                      const char* name,
@@ -3864,9 +4176,9 @@ of the result may be zero.
 start of the string, to a count of the equivalent number of UTF-8 chars.
 Handles magic and type coercion.
 
-	void	sv_pos_b2u(SV *const sv, I32 *const offsetp)','name' => 'sv_pos_b2u'},'sv_utf8_upgrade_flags_grow' => {'text' => '','name' => 'sv_utf8_upgrade_flags_grow'},'SVt_IV' => {'text' => 'Integer type flag for scalars.  See C<svtype>.','name' => 'SVt_IV'},'SvIsCOW' => {'text' => 'Returns a boolean indicating whether the SV is Copy-On-Write. (either shared
+	void	sv_pos_b2u(SV *const sv, I32 *const offsetp)','name' => 'sv_pos_b2u'},'sv_utf8_upgrade_flags_grow' => {'text' => '','name' => 'sv_utf8_upgrade_flags_grow'},'SVt_IV' => {'text' => 'Integer type flag for scalars.  See C<svtype>.','name' => 'SVt_IV'},'SvIsCOW' => {'text' => 'Returns a boolean indicating whether the SV is Copy-On-Write (either shared
 hash key scalars, or full Copy On Write scalars if 5.9.0 is configured for
-COW)
+COW).
 
 	bool	SvIsCOW(SV* sv)','name' => 'SvIsCOW'},'reentrant_size' => {'text' => '','name' => 'reentrant_size'},'printf_nocontext' => {'text' => '','name' => 'printf_nocontext'},'save_freesv' => {'text' => '','name' => 'save_freesv'},'sv_catsv' => {'text' => 'Concatenates the string from SV C<ssv> onto the end of the string in
 SV C<dsv>.  Modifies C<dsv> but not C<ssv>.  Handles \'get\' magic, but
@@ -3882,13 +4194,15 @@ must be called prior to setup the C<MARK> variable.
 of an SV instead of a string/length pair.
 
 	PADOFFSET pad_add_name_sv(SV *name, U32 flags,
-	                          HV *typestash, HV *ourstash)','name' => 'pad_add_name_sv'},'to_utf8_upper' => {'text' => 'Convert the UTF-8 encoded character at p to its uppercase version and
-store that in UTF-8 in ustrp and its length in bytes in lenp.  Note
+	                          HV *typestash, HV *ourstash)','name' => 'pad_add_name_sv'},'to_utf8_upper' => {'text' => 'Convert the UTF-8 encoded character at C<p> to its uppercase version and
+store that in UTF-8 in C<ustrp> and its length in bytes in C<lenp>.  Note
 that the ustrp needs to be at least UTF8_MAXBYTES_CASE+1 bytes since
 the uppercase version may be longer than the original character.
 
 The first character of the uppercased version is returned
 (but note, as explained above, that there may be more.)
+
+The character at C<p> is assumed by this routine to be well-formed.
 
 	UV	to_utf8_upper(const U8 *p, U8* ustrp,
 		              STRLEN *lenp)','name' => 'to_utf8_upper'},'SvPVutf8x_force' => {'text' => 'Like C<SvPV_force>, but converts sv to utf8 first if necessary.
@@ -3896,8 +4210,8 @@ Guarantees to evaluate sv only once; use the more efficient C<SvPVutf8_force>
 otherwise.
 
 	char*	SvPVutf8x_force(SV* sv, STRLEN len)','name' => 'SvPVutf8x_force'},'warner_nocontext' => {'text' => '','name' => 'warner_nocontext'},'sv_eq_flags' => {'text' => 'Returns a boolean indicating whether the strings in the two SVs are
-identical. Is UTF-8 and \'use bytes\' aware and coerces its args to strings
-if necessary. If the flags include SV_GMAGIC, it handles get-magic, too.
+identical.  Is UTF-8 and \'use bytes\' aware and coerces its args to strings
+if necessary.  If the flags include SV_GMAGIC, it handles get-magic, too.
 
 	I32	sv_eq_flags(SV* sv1, SV* sv2, const U32 flags)','name' => 'sv_eq_flags'},'my_htonl' => {'text' => '','name' => 'my_htonl'},'PUSHi' => {'text' => 'Push an integer onto the stack.  The stack must have room for this element.
 Handles \'set\' magic.  Uses C<TARG>, so C<dTARGET> or C<dXSTARG> should be
@@ -3907,23 +4221,29 @@ C<mXPUSHi>.
 
 	void	PUSHi(IV iv)','name' => 'PUSHi'},'is_uni_digit' => {'text' => '','name' => 'is_uni_digit'},'SvLEN_set' => {'text' => 'Set the actual length of the string which is in the SV.  See C<SvIV_set>.
 
-	void	SvLEN_set(SV* sv, STRLEN len)','name' => 'SvLEN_set'},'to_utf8_lower' => {'text' => 'Convert the UTF-8 encoded character at p to its lowercase version and
-store that in UTF-8 in ustrp and its length in bytes in lenp.  Note
-that the ustrp needs to be at least UTF8_MAXBYTES_CASE+1 bytes since the
+	void	SvLEN_set(SV* sv, STRLEN len)','name' => 'SvLEN_set'},'new_numeric' => {'text' => '','name' => 'new_numeric'},'to_utf8_lower' => {'text' => 'Convert the UTF-8 encoded character at C<p> to its lowercase version and
+store that in UTF-8 in ustrp and its length in bytes in C<lenp>.  Note
+that the C<ustrp> needs to be at least UTF8_MAXBYTES_CASE+1 bytes since the
 lowercase version may be longer than the original character.
 
 The first character of the lowercased version is returned
 (but note, as explained above, that there may be more.)
 
+The character at C<p> is assumed by this routine to be well-formed.
+
 	UV	to_utf8_lower(const U8 *p, U8* ustrp,
-		              STRLEN *lenp)','name' => 'to_utf8_lower'},'new_numeric' => {'text' => '','name' => 'new_numeric'},'newSVpvf' => {'text' => 'Creates a new SV and initializes it with the string formatted like
+		              STRLEN *lenp)','name' => 'to_utf8_lower'},'gv_init_pv' => {'text' => 'Same as gv_init_pvn(), but takes a nul-terminated string for the name
+instead of separate char * and length parameters.
+
+	void	gv_init_pv(GV* gv, HV* stash, const char* name,
+		           U32 flags)','name' => 'gv_init_pv'},'newSVpvf' => {'text' => 'Creates a new SV and initializes it with the string formatted like
 C<sprintf>.
 
 	SV*	newSVpvf(const char *const pat, ...)','name' => 'newSVpvf'},'doing_taint' => {'text' => '','name' => 'doing_taint'},'save_I8' => {'text' => '','name' => 'save_I8'},'Newxc' => {'text' => 'The XSUB-writer\'s interface to the C C<malloc> function, with
 cast.  See also C<Newx>.
 
 	void	Newxc(void* ptr, int nitems, type, cast)','name' => 'Newxc'},'SvIVX' => {'text' => 'Returns the raw value in the SV\'s IV slot, without checks or conversions.
-Only use when you are sure SvIOK is true. See also C<SvIV()>.
+Only use when you are sure SvIOK is true.  See also C<SvIV()>.
 
 	IV	SvIVX(SV* sv)','name' => 'SvIVX'},'lex_stuff_pvs' => {'text' => 'Like L</lex_stuff_pvn>, but takes a literal string instead of a
 string/length pair.
@@ -3950,7 +4270,7 @@ stack.
 
 	void	XST_mYES(int pos)','name' => 'XST_mYES'},'sv_setsv' => {'text' => 'Copies the contents of the source SV C<ssv> into the destination SV
 C<dsv>.  The source SV may be destroyed if it is mortal, so don\'t use this
-function if the source SV needs to be reused. Does not handle \'set\' magic.
+function if the source SV needs to be reused.  Does not handle \'set\' magic.
 Loosely speaking, it performs a copy-by-value, obliterating any previous
 content of the destination.
 
@@ -3989,7 +4309,7 @@ handled automatically by C<xsubpp>.
 		dXSI32;','name' => 'dXSI32'},'dXCPT' => {'text' => 'Set up necessary local variables for exception handling.
 See L<perlguts/"Exception Handling">.
 
-		dXCPT;','name' => 'dXCPT'},'sv_tainted' => {'text' => 'Test an SV for taintedness. Use C<SvTAINTED> instead.
+		dXCPT;','name' => 'dXCPT'},'sv_tainted' => {'text' => 'Test an SV for taintedness.  Use C<SvTAINTED> instead.
 
 	bool	sv_tainted(SV *const sv)','name' => 'sv_tainted'},'mro_set_private_data' => {'text' => '','name' => 'mro_set_private_data'},'do_gv_dump' => {'text' => '','name' => 'do_gv_dump'},'reg_named_buff_nextkey' => {'text' => '','name' => 'reg_named_buff_nextkey'},'hv_fill' => {'text' => 'Returns the number of hash buckets that happen to be in use. This function is
 wrapped by the macro C<HvFILL>.
@@ -4026,29 +4346,29 @@ If you are using C<HePV> to get values to pass to C<newSVpvn()> to create a
 new SV, you should consider using C<newSVhek(HeKEY_hek(he))> as it is more
 efficient.
 
-	char*	HePV(HE* he, STRLEN len)','name' => 'HePV'},'hv_free_ent' => {'text' => '','name' => 'hv_free_ent'},'PL_parser' => {'text' => 'Pointer to a structure encapsulating the state of the parsing operation
-currently in progress.  The pointer can be locally changed to perform
-a nested parse without interfering with the state of an outer parse.
-Individual members of C<PL_parser> have their own documentation.','name' => 'PL_parser'},'SvGETMAGIC' => {'text' => 'Invokes C<mg_get> on an SV if it has \'get\' magic.  This macro evaluates its
+	char*	HePV(HE* he, STRLEN len)','name' => 'HePV'},'hv_free_ent' => {'text' => '','name' => 'hv_free_ent'},'SvGETMAGIC' => {'text' => 'Invokes C<mg_get> on an SV if it has \'get\' magic.  This macro evaluates its
 argument more than once.
 
-	void	SvGETMAGIC(SV* sv)','name' => 'SvGETMAGIC'},'pv_uni_display' => {'text' => 'Build to the scalar dsv a displayable version of the string spv,
-length len, the displayable version being at most pvlim bytes long
+	void	SvGETMAGIC(SV* sv)','name' => 'SvGETMAGIC'},'PL_parser' => {'text' => 'Pointer to a structure encapsulating the state of the parsing operation
+currently in progress.  The pointer can be locally changed to perform
+a nested parse without interfering with the state of an outer parse.
+Individual members of C<PL_parser> have their own documentation.','name' => 'PL_parser'},'pv_uni_display' => {'text' => 'Build to the scalar C<dsv> a displayable version of the string C<spv>,
+length C<len>, the displayable version being at most C<pvlim> bytes long
 (if longer, the rest is truncated and "..." will be appended).
 
-The flags argument can have UNI_DISPLAY_ISPRINT set to display
+The C<flags> argument can have UNI_DISPLAY_ISPRINT set to display
 isPRINT()able characters as themselves, UNI_DISPLAY_BACKSLASH
 to display the \\\\[nrfta\\\\] as the backslashed versions (like \'\\n\')
 (UNI_DISPLAY_BACKSLASH is preferred over UNI_DISPLAY_ISPRINT for \\\\).
 UNI_DISPLAY_QQ (and its alias UNI_DISPLAY_REGEX) have both
 UNI_DISPLAY_BACKSLASH and UNI_DISPLAY_ISPRINT turned on.
 
-The pointer to the PV of the dsv is returned.
+The pointer to the PV of the C<dsv> is returned.
 
 	char*	pv_uni_display(SV *dsv, const U8 *spv,
 		               STRLEN len, STRLEN pvlim,
 		               UV flags)','name' => 'pv_uni_display'},'init_stacks' => {'text' => '','name' => 'init_stacks'},'sv_inc' => {'text' => 'Auto-increment of the value in the SV, doing string to numeric conversion
-if necessary. Handles \'get\' magic and operator overloading.
+if necessary.  Handles \'get\' magic and operator overloading.
 
 	void	sv_inc(SV *const sv)','name' => 'sv_inc'},'SvPVbytex_force' => {'text' => 'Like C<SvPV_force>, but converts sv to byte representation first if necessary.
 Guarantees to evaluate sv only once; use the more efficient C<SvPVbyte_force>
@@ -4061,10 +4381,12 @@ opcode for the list.  If I<last> is not already a list of the right type,
 it will be upgraded into one.  If either I<first> or I<last> is null,
 the other is returned unchanged.
 
-	OP *	op_prepend_elem(I32 optype, OP *first, OP *last)','name' => 'op_prepend_elem'},'hv_delete' => {'text' => 'Deletes a key/value pair in the hash.  The value\'s SV is removed from the
-hash, made mortal, and returned to the caller.  The C<klen> is the length of
-the key.  The C<flags> value will normally be zero; if set to G_DISCARD then
-NULL will be returned.  NULL will also be returned if the key is not found.
+	OP *	op_prepend_elem(I32 optype, OP *first, OP *last)','name' => 'op_prepend_elem'},'hv_delete' => {'text' => 'Deletes a key/value pair in the hash.  The value\'s SV is removed from
+the hash, made mortal, and returned to the caller.  The absolute
+value of C<klen> is the length of the key.  If C<klen> is negative the
+key is assumed to be in UTF-8-encoded Unicode.  The C<flags> value
+will normally be zero; if set to G_DISCARD then NULL will be returned.
+NULL will also be returned if the key is not found.
 
 	SV*	hv_delete(HV *hv, const char *key, I32 klen,
 		          I32 flags)','name' => 'hv_delete'},'pad_add_name_pv' => {'text' => 'Exactly like L</pad_add_name_pvn>, but takes a nul-terminated string
@@ -4079,7 +4401,7 @@ assumed to be octets in that encoding and decoding the input starts
 from the position which (PV + *offset) pointed to.  The dsv will be
 concatenated the decoded UTF-8 string from ssv.  Decoding will terminate
 when the string tstr appears in decoding output or the input ends on
-the PV of the ssv. The value which the offset points will be modified
+the PV of the ssv.  The value which the offset points will be modified
 to the last input position on the ssv.
 
 Returns TRUE if the terminator was found, else returns FALSE.
@@ -4093,16 +4415,25 @@ C<SvIV_set> instead of the lvalue assignment to C<SvIVX>.
 	void	SvIV_set(SV* sv, IV val)','name' => 'SvIV_set'},'sv_setiv' => {'text' => 'Copies an integer into the given SV, upgrading first if necessary.
 Does not handle \'set\' magic.  See also C<sv_setiv_mg>.
 
-	void	sv_setiv(SV *const sv, const IV num)','name' => 'sv_setiv'},'gv_efullname' => {'text' => '','name' => 'gv_efullname'},'sv_report_used' => {'text' => 'Dump the contents of all SVs not yet freed. (Debugging aid).
+	void	sv_setiv(SV *const sv, const IV num)','name' => 'sv_setiv'},'gv_efullname' => {'text' => '','name' => 'gv_efullname'},'sv_report_used' => {'text' => 'Dump the contents of all SVs not yet freed (debugging aid).
 
 	void	sv_report_used()','name' => 'sv_report_used'},'save_sptr' => {'text' => '','name' => 'save_sptr'},'SvNVX' => {'text' => 'Returns the raw value in the SV\'s NV slot, without checks or conversions.
-Only use when you are sure SvNOK is true. See also C<SvNV()>.
+Only use when you are sure SvNOK is true.  See also C<SvNV()>.
 
 	NV	SvNVX(SV* sv)','name' => 'SvNVX'},'do_open' => {'text' => '','name' => 'do_open'},'regnext' => {'text' => '','name' => 'regnext'},'HeHASH' => {'text' => 'Returns the computed hash stored in the hash entry.
 
 	U32	HeHASH(HE* he)','name' => 'HeHASH'},'SvIOK' => {'text' => 'Returns a U32 value indicating whether the SV contains an integer.
 
-	U32	SvIOK(SV* sv)','name' => 'SvIOK'},'newANONHASH' => {'text' => '','name' => 'newANONHASH'},'SvPV_force' => {'text' => 'Like C<SvPV> but will force the SV into containing just a string
+	U32	SvIOK(SV* sv)','name' => 'SvIOK'},'newANONHASH' => {'text' => '','name' => 'newANONHASH'},'is_utf8_char_buf' => {'text' => 'Returns the number of bytes that comprise the first UTF-8 encoded character in
+buffer C<buf>.  C<buf_end> should point to one position beyond the end of the
+buffer.  0 is returned if C<buf> does not point to a complete, valid UTF-8
+encoded character.
+
+Note that an INVARIANT character (i.e. ASCII on non-EBCDIC
+machines) is a valid UTF-8 character.
+
+	STRLEN	is_utf8_char_buf(const U8 *buf,
+		                 const U8 *buf_end)','name' => 'is_utf8_char_buf'},'SvPV_force' => {'text' => 'Like C<SvPV> but will force the SV into containing just a string
 (C<SvPOK_only>).  You want force if you are going to update the C<SvPVX>
 directly.
 
@@ -4134,7 +4465,8 @@ hash of the key string, or zero if it has not been precomputed.
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	COPHH *	cophh_delete_pvn(COPHH *cophh, const char *keypv,
+	COPHH *	cophh_delete_pvn(COPHH *cophh,
+		                 const char *keypv,
 		                 STRLEN keylen, U32 hash,
 		                 U32 flags)','name' => 'cophh_delete_pvn'},'grok_hex' => {'text' => 'converts a string representing a hex number to numeric form.
 
@@ -4170,24 +4502,25 @@ Usually used via one of its frontends C<sv_vsetpvf> and C<sv_vsetpvf_mg>.
 		            const STRLEN patlen,
 		            va_list *const args,
 		            SV **const svargs, const I32 svmax,
-		            bool *const maybe_tainted)','name' => 'sv_vsetpvfn'},'PerlIO_get_cnt' => {'text' => '','name' => 'PerlIO_get_cnt'},'PerlIO_setlinebuf' => {'text' => '','name' => 'PerlIO_setlinebuf'},'utf16_to_utf8_reversed' => {'text' => '','name' => 'utf16_to_utf8_reversed'},'cast_ulong' => {'text' => '','name' => 'cast_ulong'},'to_utf8_case' => {'text' => 'The "p" contains the pointer to the UTF-8 string encoding
-the character that is being converted.
+		            bool *const maybe_tainted)','name' => 'sv_vsetpvfn'},'PerlIO_get_cnt' => {'text' => '','name' => 'PerlIO_get_cnt'},'PerlIO_setlinebuf' => {'text' => '','name' => 'PerlIO_setlinebuf'},'utf16_to_utf8_reversed' => {'text' => '','name' => 'utf16_to_utf8_reversed'},'cast_ulong' => {'text' => '','name' => 'cast_ulong'},'to_utf8_case' => {'text' => 'The C<p> contains the pointer to the UTF-8 string encoding
+the character that is being converted.  This routine assumes that the character
+at C<p> is well-formed.
 
-The "ustrp" is a pointer to the character buffer to put the
-conversion result to.  The "lenp" is a pointer to the length
+The C<ustrp> is a pointer to the character buffer to put the
+conversion result to.  The C<lenp> is a pointer to the length
 of the result.
 
-The "swashp" is a pointer to the swash to use.
+The C<swashp> is a pointer to the swash to use.
 
-Both the special and normal mappings are stored in lib/unicore/To/Foo.pl,
-and loaded by SWASHNEW, using lib/utf8_heavy.pl.  The special (usually,
+Both the special and normal mappings are stored in F<lib/unicore/To/Foo.pl>,
+and loaded by SWASHNEW, using F<lib/utf8_heavy.pl>.  The C<special> (usually,
 but not always, a multicharacter mapping), is tried first.
 
-The "special" is a string like "utf8::ToSpecLower", which means the
+The C<special> is a string like "utf8::ToSpecLower", which means the
 hash %utf8::ToSpecLower.  The access to the hash is through
 Perl_to_utf8_case().
 
-The "normal" is a string like "ToLower" which means the swash
+The C<normal> is a string like "ToLower" which means the swash
 %utf8::ToLower.
 
 	UV	to_utf8_case(const U8 *p, U8* ustrp,
@@ -4230,11 +4563,13 @@ the type.  Can do overlapping moves.  See also C<Copy>.
 	void	Move(void* src, void* dest, int nitems, type)','name' => 'Move'},'set_context' => {'text' => '','name' => 'set_context'},'sv_catpvn_flags' => {'text' => 'Concatenates the string onto the end of the string which is in the SV.  The
 C<len> indicates number of bytes to copy.  If the SV has the UTF-8
 status set, then the bytes appended should be valid UTF-8.
-If C<flags> has C<SV_GMAGIC> bit set, will C<mg_get> on C<dsv> if
-appropriate, else not. C<sv_catpvn> and C<sv_catpvn_nomg> are implemented
+If C<flags> has the C<SV_SMAGIC> bit set, will
+C<mg_set> on C<dsv> afterwards if appropriate.
+C<sv_catpvn> and C<sv_catpvn_nomg> are implemented
 in terms of this function.
 
-	void	sv_catpvn_flags(SV *const dstr, const char *sstr,
+	void	sv_catpvn_flags(SV *const dstr,
+		                const char *sstr,
 		                const STRLEN len,
 		                const I32 flags)','name' => 'sv_catpvn_flags'},'PerlIO_flush' => {'text' => '','name' => 'PerlIO_flush'},'sv_2iv_flags' => {'text' => 'Return the integer value of an SV, doing any necessary string
 conversion.  If flags includes SV_GMAGIC, does an mg_get() first.
@@ -4258,7 +4593,7 @@ removed without notice.
 		                U32 flags)','name' => 'cop_store_label'},'PUSHmortal' => {'text' => 'Push a new mortal SV onto the stack.  The stack must have room for this
 element.  Does not use C<TARG>.  See also C<PUSHs>, C<XPUSHmortal> and C<XPUSHs>.
 
-	void	PUSHmortal()','name' => 'PUSHmortal'},'perl_alloc' => {'text' => 'Allocates a new Perl interpreter.  See L<perlembed>.
+	void	PUSHmortal()','name' => 'PUSHmortal'},'XS_EXTERNAL' => {'text' => 'Macro to declare an XSUB and its C parameter list explicitly exporting the symbols.','name' => 'XS_EXTERNAL'},'perl_alloc' => {'text' => 'Allocates a new Perl interpreter.  See L<perlembed>.
 
 	PerlInterpreter* perl_alloc()','name' => 'perl_alloc'},'sv_dump' => {'text' => '','name' => 'sv_dump'},'pad_tidy' => {'text' => 'Tidy up a pad at the end of compilation of the code to which it belongs.
 Jobs performed here are: remove most stuff from the pads of anonsub
@@ -4283,7 +4618,8 @@ string.  You are responsible for ensuring that the source string is at least
 C<len> bytes long.  If the C<s> argument is NULL the new SV will be undefined.
 Currently the only flag bits accepted are C<SVf_UTF8> and C<SVs_TEMP>.
 If C<SVs_TEMP> is set, then C<sv_2mortal()> is called on the result before
-returning. If C<SVf_UTF8> is set, C<s> is considered to be in UTF-8 and the
+returning.  If C<SVf_UTF8> is set, C<s>
+is considered to be in UTF-8 and the
 C<SVf_UTF8> flag will be set on the new SV.
 C<newSVpvn_utf8()> is a convenience wrapper for this function, defined as
 
@@ -4291,7 +4627,8 @@ C<newSVpvn_utf8()> is a convenience wrapper for this function, defined as
 	newSVpvn_flags((s), (len), (u) ? SVf_UTF8 : 0)
 
 	SV*	newSVpvn_flags(const char *const s,
-		               const STRLEN len, const U32 flags)','name' => 'newSVpvn_flags'},'XopFLAGS' => {'text' => 'Return the XOP\'s flags.
+		               const STRLEN len,
+		               const U32 flags)','name' => 'newSVpvn_flags'},'XopFLAGS' => {'text' => 'Return the XOP\'s flags.
 
 	U32	XopFLAGS(XOP *xop)','name' => 'XopFLAGS'},'sv_compile_2op' => {'text' => '','name' => 'sv_compile_2op'},'SvOK' => {'text' => 'Returns a U32 value indicating whether the value is defined. This is
 only meaningful for scalars.
@@ -4331,16 +4668,18 @@ removed without notice.
 		              U32 flags)','name' => 'lex_stuff_pvn'},'sv_usepvn_flags' => {'text' => 'Tells an SV to use C<ptr> to find its string value.  Normally the
 string is stored inside the SV but sv_usepvn allows the SV to use an
 outside string.  The C<ptr> should point to memory that was allocated
-by C<malloc>.  The string length, C<len>, must be supplied.  By default
+by C<malloc>.  It must be the start of a mallocked block
+of memory, and not a pointer to the middle of it.  The
+string length, C<len>, must be supplied.  By default
 this function will realloc (i.e. move) the memory pointed to by C<ptr>,
 so that pointer should not be freed or used by the programmer after
 giving it to sv_usepvn, and neither should any pointers from "behind"
 that pointer (e.g. ptr + 1) be used.
 
-If C<flags> & SV_SMAGIC is true, will call SvSETMAGIC. If C<flags> &
+If C<flags> & SV_SMAGIC is true, will call SvSETMAGIC.  If C<flags> &
 SV_HAS_TRAILING_NUL is true, then C<ptr[len]> must be NUL, and the realloc
-will be skipped. (i.e. the buffer is actually at least 1 byte longer than
-C<len>, and already meets the requirements for storing in C<SvPVX>)
+will be skipped (i.e. the buffer is actually at least 1 byte longer than
+C<len>, and already meets the requirements for storing in C<SvPVX>).
 
 	void	sv_usepvn_flags(SV *const sv, char* ptr,
 		                const STRLEN len,
@@ -4444,11 +4783,12 @@ character set, if possible; otherwise returns the input character itself.
 	char	toUPPER(char ch)','name' => 'toUPPER'},'sv_catpvs_flags' => {'text' => 'Like C<sv_catpvn_flags>, but takes a literal string instead of a
 string/length pair.
 
-	void	sv_catpvs_flags(SV* sv, const char* s, I32 flags)','name' => 'sv_catpvs_flags'},'is_lvalue_sub' => {'text' => '','name' => 'is_lvalue_sub'},'is_utf8_string_loc' => {'text' => 'Like is_utf8_string() but stores the location of the failure (in the
-case of "utf8ness failure") or the location s+len (in the case of
+	void	sv_catpvs_flags(SV* sv, const char* s,
+		                I32 flags)','name' => 'sv_catpvs_flags'},'is_lvalue_sub' => {'text' => '','name' => 'is_lvalue_sub'},'is_utf8_string_loc' => {'text' => 'Like L</is_utf8_string> but stores the location of the failure (in the
+case of "utf8ness failure") or the location C<s>+C<len> (in the case of
 "utf8ness success") in the C<ep>.
 
-See also is_utf8_string_loclen() and is_utf8_string().
+See also L</is_utf8_string_loclen>() and L</is_utf8_string>().
 
 	bool	is_utf8_string_loc(const U8 *s, STRLEN len,
 		                   const U8 **p)','name' => 'is_utf8_string_loc'},'sv_gets' => {'text' => 'Get a line from the filehandle and store it into the SV, optionally
@@ -4456,7 +4796,7 @@ appending to the currently-stored string.
 
 	char*	sv_gets(SV *const sv, PerlIO *const fp,
 		        I32 append)','name' => 'sv_gets'},'SvSetSV_nosteal' => {'text' => 'Calls a non-destructive version of C<sv_setsv> if dsv is not the same as
-ssv. May evaluate arguments more than once.
+ssv.  May evaluate arguments more than once.
 
 	void	SvSetSV_nosteal(SV* dsv, SV* ssv)','name' => 'SvSetSV_nosteal'},'pad_add_anon' => {'text' => 'Allocates a place in the currently-compiling pad (via L</pad_alloc>)
 for an anonymous function that is lexically scoped inside the
@@ -4475,40 +4815,42 @@ to still use it for ensuring past and future compatibility.
 		dUNDERBAR;','name' => 'dUNDERBAR'},'sv_uv' => {'text' => 'A private implementation of the C<SvUVx> macro for compilers which can\'t
 cope with complex macro expressions. Always use the macro instead.
 
-	UV	sv_uv(SV* sv)','name' => 'sv_uv'},'ptr_table_split' => {'text' => '','name' => 'ptr_table_split'},'foldEQ_utf8' => {'text' => 'Returns true if the leading portions of the strings s1 and s2 (either or both
+	UV	sv_uv(SV* sv)','name' => 'sv_uv'},'ptr_table_split' => {'text' => '','name' => 'ptr_table_split'},'foldEQ_utf8' => {'text' => 'Returns true if the leading portions of the strings C<s1> and C<s2> (either or both
 of which may be in UTF-8) are the same case-insensitively; false otherwise.
 How far into the strings to compare is determined by other input parameters.
 
-If u1 is true, the string s1 is assumed to be in UTF-8-encoded Unicode;
-otherwise it is assumed to be in native 8-bit encoding.  Correspondingly for u2
-with respect to s2.
+If C<u1> is true, the string C<s1> is assumed to be in UTF-8-encoded Unicode;
+otherwise it is assumed to be in native 8-bit encoding.  Correspondingly for C<u2>
+with respect to C<s2>.
 
-If the byte length l1 is non-zero, it says how far into s1 to check for fold
-equality.  In other words, s1+l1 will be used as a goal to reach.  The
+If the byte length C<l1> is non-zero, it says how far into C<s1> to check for fold
+equality.  In other words, C<s1>+C<l1> will be used as a goal to reach.  The
 scan will not be considered to be a match unless the goal is reached, and
-scanning won\'t continue past that goal.  Correspondingly for l2 with respect to
-s2.
+scanning won\'t continue past that goal.  Correspondingly for C<l2> with respect to
+C<s2>.
 
-If pe1 is non-NULL and the pointer it points to is not NULL, that pointer is
-considered an end pointer beyond which scanning of s1 will not continue under
-any circumstances.  This means that if both l1 and pe1 are specified, and pe1
-is less than s1+l1, the match will never be successful because it can never
+If C<pe1> is non-NULL and the pointer it points to is not NULL, that pointer is
+considered an end pointer beyond which scanning of C<s1> will not continue under
+any circumstances.  This means that if both C<l1> and C<pe1> are specified, and
+C<pe1>
+is less than C<s1>+C<l1>, the match will never be successful because it can
+never
 get as far as its goal (and in fact is asserted against).  Correspondingly for
-pe2 with respect to s2.
+C<pe2> with respect to C<s2>.
 
-At least one of s1 and s2 must have a goal (at least one of l1 and l2 must be
-non-zero), and if both do, both have to be
+At least one of C<s1> and C<s2> must have a goal (at least one of C<l1> and
+C<l2> must be non-zero), and if both do, both have to be
 reached for a successful match.   Also, if the fold of a character is multiple
 characters, all of them must be matched (see tr21 reference below for
 \'folding\').
 
-Upon a successful match, if pe1 is non-NULL,
-it will be set to point to the beginning of the I<next> character of s1 beyond
-what was matched.  Correspondingly for pe2 and s2.
+Upon a successful match, if C<pe1> is non-NULL,
+it will be set to point to the beginning of the I<next> character of C<s1>
+beyond what was matched.  Correspondingly for C<pe2> and C<s2>.
 
 For case-insensitiveness, the "casefolding" of Unicode is used
 instead of upper/lowercasing both the characters, see
-http://www.unicode.org/unicode/reports/tr21/ (Case Mappings).
+L<http://www.unicode.org/unicode/reports/tr21/> (Case Mappings).
 
 	I32	foldEQ_utf8(const char *s1, char **pe1, UV l1,
 		            bool u1, const char *s2, char **pe2,
@@ -4555,7 +4897,7 @@ errors, however, will throw an exception immediately.
 NOTE: this function is experimental and may change or be
 removed without notice.
 
-	OP *	parse_fullexpr(U32 flags)','name' => 'parse_fullexpr'},'sv_magicext' => {'text' => 'Adds magic to an SV, upgrading it if necessary. Applies the
+	OP *	parse_fullexpr(U32 flags)','name' => 'parse_fullexpr'},'sv_magicext' => {'text' => 'Adds magic to an SV, upgrading it if necessary.  Applies the
 supplied vtable and returns a pointer to the magic added.
 
 Note that C<sv_magicext> will allow things that C<sv_magic> will not.
@@ -4574,7 +4916,7 @@ to contain an C<SV*> and is stored as-is with its REFCNT incremented.
 		            const MGVTBL *const vtbl,
 		            const char *const name,
 		            const I32 namlen)','name' => 'sv_magicext'},'to_uni_title' => {'text' => '','name' => 'to_uni_title'},'gv_fullname4' => {'text' => '','name' => 'gv_fullname4'},'is_uni_idfirst' => {'text' => '','name' => 'is_uni_idfirst'},'av_push' => {'text' => 'Pushes an SV onto the end of the array.  The array will grow automatically
-to accommodate the addition. This takes ownership of one reference count.
+to accommodate the addition.  This takes ownership of one reference count.
 
 Perl equivalent: C<push @myarray, $elem;>.
 
@@ -4593,7 +4935,8 @@ set as required.  I<listval> and I<subscript> supply the parameters of
 the slice; they are consumed by this function and become part of the
 constructed op tree.
 
-	OP *	newSLICEOP(I32 flags, OP *subscript, OP *listval)','name' => 'newSLICEOP'},'mfree' => {'text' => '','name' => 'mfree'},'save_re_context' => {'text' => '','name' => 'save_re_context'},'hv_iterinit' => {'text' => 'Prepares a starting point to traverse a hash table.  Returns the number of
+	OP *	newSLICEOP(I32 flags, OP *subscript,
+		           OP *listval)','name' => 'newSLICEOP'},'mfree' => {'text' => '','name' => 'mfree'},'save_re_context' => {'text' => '','name' => 'save_re_context'},'hv_iterinit' => {'text' => 'Prepares a starting point to traverse a hash table.  Returns the number of
 keys in the hash (i.e. the same as C<HvUSEDKEYS(hv)>).  The return value is
 currently only meaningful for hashes without tie magic.
 
@@ -4606,7 +4949,7 @@ value, you can get it through the macro C<HvFILL(hv)>.
 
   my $self = bless({
     'index' => $VAR1,
-    perl_version => '5.015001',
+    perl_version => '5.016000',
   } => $class);
   return $self;
 }
