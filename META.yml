@@ -21,4 +21,4 @@ requires:
   Class::XSAccessor: 1.05
   Data::Dumper: 0
   parent: 0
-version: 0.11
+version: 0.12
