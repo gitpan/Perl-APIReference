@@ -1,24 +1,24 @@
----
-abstract: 'Programmatically query the perlapi'
+--- #YAML:1.0
+name:               Perl-APIReference
+version:            0.17
+abstract:           Programmatically query the perlapi
 author:
-  - 'Steffen Mueller <smueller@cpan.org>'
-build_requires:
-  ExtUtils::MakeMaker: 0
+    - Steffen Mueller <smueller@cpan.org>
+license:            unknown
+distribution_type:  module
 configure_requires:
-  ExtUtils::MakeMaker: 0
-dynamic_config: 1
-generated_by: 'ExtUtils::MakeMaker version 6.64, CPAN::Meta::Converter version 2.120921'
-license: unknown
-meta-spec:
-  url: http://module-build.sourceforge.net/META-spec-v1.4.html
-  version: 1.4
-name: Perl-APIReference
-no_index:
-  directory:
-    - t
-    - inc
+    ExtUtils::MakeMaker:  0
+build_requires:
+    ExtUtils::MakeMaker:  0
 requires:
-  Class::XSAccessor: 1.05
-  Data::Dumper: 0
-  parent: 0
-version: 0.16
+    Class::XSAccessor:  1.05
+    Data::Dumper:       0
+    parent:             0
+no_index:
+    directory:
+        - t
+        - inc
+generated_by:       ExtUtils::MakeMaker version 6.57_05
+meta-spec:
+    url:      http://module-build.sourceforge.net/META-spec-v1.4.html
+    version:  1.4
