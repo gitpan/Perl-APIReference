@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               Perl-APIReference
-version:            0.17
+version:            0.18
 abstract:           Programmatically query the perlapi
 author:
     - Steffen Mueller <smueller@cpan.org>
